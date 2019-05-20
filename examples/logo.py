@@ -32,7 +32,7 @@ data = {
             'f': f,
             'par': (2, 1000),
             'bounds': (-np.inf, np.inf),
-            'label': 'Linear Regression:\n$y={p[0]:.2f}x+{p[1]:.1f}$, $R^2={R:.4f}$',
+            'label': 'Linear Regression:\n$I={p[0]:.2f}t+{p[1]:.1f}$, $R^2={R:.4f}$',
             'contx': np.linspace(min(xdata), max(xdata) + 1, 100),
         }
     },
@@ -43,7 +43,7 @@ data = {
             'f': f,
             'par': (1, 1000),
             'bounds': (-np.inf, np.inf),
-            'label': 'Linear Regression:\n$y={p[0]:.2f}x+{p[1]:.1f}$, $R^2={R:.4f}$',
+            'label': 'Linear Regression:\n$I={p[0]:.2f}t+{p[1]:.1f}$, $R^2={R:.4f}$',
             'contx': np.linspace(min(xdata), max(xdata) + 1, 100),
         }
     },
@@ -51,7 +51,7 @@ data = {
 fig, axr = pp.fit_and_plot(data,
                            title='Physicist',
                            xlabel='Time $t$ in days',
-                           ylabel='Income',
+                           ylabel='Income $I$ in \$',
                            axes=axr,
                            xlim = (0, max(xdata) + 1),
                            ylim = (1000, 1460))
