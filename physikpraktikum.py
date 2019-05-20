@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 
 SCATTERPLOT_OPTIONS = {
     'marker': 'x',
-    'markersize': 1.5,
+    'markersize': 2.5,
     'linewidth': 0,
 }
 FITPLOT_OPTIONS = {
@@ -39,10 +39,12 @@ SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classi
     'figure.subplot.right': 0.925,
     'figure.subplot.top': 0.925,
     'figure.subplot.bottom': 0.075,
-    'figure.subplot.hspace': 0.15,
-    'figure.subplot.wspace': 0.15,
+    'figure.subplot.hspace': 0.2,
+    'figure.subplot.wspace': 0.2,
     'font.size': 12.0,
     'grid.linestyle': '-',
+    'lines.marker': '',
+    'scatter.marker': 'x',
     'legend.fontsize': 10,
     'legend.loc': 'best',
     'legend.labelspacing': 0.75,
@@ -352,6 +354,7 @@ def fit_and_plot(data: dict,
                  ylim: Tuple[float, float],
                  colors: list=None,
                  figsize: Tuple[float, float] = (9, 6.5),
+                 axes: plt.Axes = None,
                  center_axes: Dict[str, Union[bool, str]] = None,
                  *args,
                  **kwargs) -> (plt.Figure, plt.Axes):
@@ -394,7 +397,11 @@ def fit_and_plot(data: dict,
     if not isinstance(center_axes, dict):
         center_axes = {'left': 'auto', 'bottom': 'auto'}
 
-    fig, ax = plt.subplots(figsize=figsize)
+    if not isinstance(axes, plt.Axes):
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        ax = axes
+        fig = plt.figure(max(plt.get_fignums()))  # find the newest figure
     i = -1
     for k, v in data.items():
         i += 1
@@ -454,6 +461,8 @@ def fit_and_plot(data: dict,
             ax.spines[k].set_position('zero')
         if v == 'auto':
             i = [ylim, xlim][k in ['left', 'right']]
+            if not isinstance(i, tuple):  # probably None
+                continue
             if i[0] <= 0 <= i[1]:
                 # The 0 line is in the displayed interval, make it thick!
                 ax.spines[k].set(position='zero', linewidth=1.5, linestyle='-')
