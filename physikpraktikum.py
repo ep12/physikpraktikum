@@ -24,7 +24,7 @@ FITPLOT_OPTIONS = {
 }
 ERRORBAR_OPTIONS = {
     'fmt': 'none',
-    'elinewidth': 1,
+    'elinewidth': 1.5,
     'alpha': 0.5,
 }
 COLORS = ['black', 'blue', 'red', 'green', 'magenta', 'cyan', 'orange']
@@ -353,7 +353,7 @@ def fit_and_plot(data: dict,
                  xlim: Tuple[float, float],
                  ylim: Tuple[float, float],
                  colors: list=None,
-                 figsize: Tuple[float, float] = (9, 6.5),
+                 figsize: Tuple[float, float] = (9, 5.5),
                  axes: plt.Axes = None,
                  center_axes: Dict[str, Union[bool, str]] = None,
                  *args,
@@ -395,7 +395,12 @@ def fit_and_plot(data: dict,
     if not isinstance(colors, list):
         colors = COLORS
     if not isinstance(center_axes, dict):
-        center_axes = {'left': 'auto', 'bottom': 'auto'}
+        center_axes = {  # TODO: make this global
+            'left': 'auto',
+            'bottom': 'auto',
+            'top': 'auto',
+            'right': 'auto',
+        }
 
     if not isinstance(axes, plt.Axes):
         fig, ax = plt.subplots(figsize=figsize)
@@ -460,7 +465,7 @@ def fit_and_plot(data: dict,
         if v == True:
             ax.spines[k].set_position('zero')
         if v == 'auto':
-            i = [ylim, xlim][k in ['left', 'right']]
+            i = sorted([ylim, xlim][k in ['left', 'right']]) # pyplot accepts intervals like (0, -1)
             if not isinstance(i, tuple):  # probably None
                 continue
             if i[0] <= 0 <= i[1]:
