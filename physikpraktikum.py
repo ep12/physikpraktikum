@@ -28,6 +28,7 @@ ERRORBAR_OPTIONS = {
     'alpha': 0.5,
 }
 COLORS = ['black', 'blue', 'red', 'green', 'magenta', 'cyan', 'orange']
+LINESTYLES = ['-', '--', ':', '-.']
 SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classic']
     'axes.grid': True,
     'axes.grid.axis': 'both',
@@ -38,7 +39,7 @@ SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classi
     'figure.subplot.left': 0.075,
     'figure.subplot.right': 0.925,
     'figure.subplot.top': 0.925,
-    'figure.subplot.bottom': 0.075,
+    'figure.subplot.bottom': 0.1,
     'figure.subplot.hspace': 0.2,
     'figure.subplot.wspace': 0.2,
     'font.size': 12.0,
@@ -62,6 +63,7 @@ SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classi
     'ytick.minor.right': False,
     'ytick.minor.visible': True,
 })
+MODE_TEXT = ['(fit)', '(manual)']
 
 
 def Identity(obj: Any) -> Any:
@@ -82,6 +84,16 @@ def power_set(index: Union[List, Tuple],
             if no_empty_set and not x:
                 continue
             yield x
+
+
+def get_doc(obj, fail: str = '', ts=4):
+    if not hasattr(obj, '__doc__'):
+        return fail
+    s = str(obj.__doc__).rstrip().replace('\t', ' ' * ts).split('\n')
+    if len(s) < 2:
+        return str(obj.__doc__)
+    indent = min(len(x) - len(x.lstrip()) for x in s[1:])
+    return '\n'.join([s[0]] + [x[indent:] for x in s[1:]])
 
 
 def intersection_interval(data: Dict[str, List],
@@ -356,6 +368,7 @@ def fit_and_plot(data: dict,
                  figsize: Tuple[float, float] = (9, 5.5),
                  axes: plt.Axes = None,
                  center_axes: Dict[str, Union[bool, str]] = None,
+                 general_plotting_options: dict = None,
                  *args,
                  **kwargs) -> (plt.Figure, plt.Axes):
     '''fit_and_plot
@@ -376,11 +389,12 @@ def fit_and_plot(data: dict,
             opt 'yerr': None|numeric|list
             opt 'is_abs_err': bool=True
             opt 'label': str, if is does not exist: name
-            opt 'fit': {
+            opt 'fit': dict|list[dict] with the following structure:
+            {
                  'f': function
                  'par': tuple of initial guesses for the parameters, will be overridden!
                  'bounds': (scalar|list, scalar|list)
-                 'label': format string for the plot legend (avail: R_squared, uncertainty, p[0...])
+                 'label': format string for the plot legend (avail: R_squared, uncertainty, p[0...], M)
                  'contx': continous x data
                  opt 'args': args to pass to physikpraktikum.fit_func
                  opt 'kwargs': args to pass to physikpraktikum.fit_funct
@@ -394,6 +408,7 @@ def fit_and_plot(data: dict,
     '''
     if not isinstance(colors, list):
         colors = COLORS
+    gpo = general_plotting_options if isinstance(general_plotting_options, dict) else {}
     if not isinstance(center_axes, dict):
         center_axes = {  # TODO: make this global
             'left': 'auto',
@@ -408,6 +423,11 @@ def fit_and_plot(data: dict,
         ax = axes
         fig = plt.figure(max(plt.get_fignums()))  # find the newest figure
     i = -1
+    if len(data) < 2:
+        fstyles = [{'color': a1, 'linestyle': a2} for a1, a2 in combinations(COLORS + LINESTYLES, 2)
+                   if a1 in a1 in COLORS and a2 in LINESTYLES]
+        fstyles = sorted(fstyles, key=lambda d: d['linestyle']) # python now preserves the order of dicts, let's prefer colors
+
     for k, v in data.items():
         i += 1
         color = colors[i]
@@ -433,30 +453,47 @@ def fit_and_plot(data: dict,
             ax.errorbar(x, y, xerr=xerr, yerr=yerr, color=color, **aebo)
 
         # fit
+        if xlim:
+            contx = np.linspace(*xlim, 100)
         if v.get('fit'):
-            fit = v.get('fit')
-            par, R_sq, uncertainty, covar_mat = fit_func(x, y,
-                                                         fit['f'], fit['par'],
-                                                         v.get('yerr'),
-                                                         v.get('is_abs_err'),
-                                                         fit['bounds'],
-                                                         *fit.get('args', ()),
-                                                         **fit.get('kwargs', {}))
-            if isinstance(par, Exception):
-                fit['error'] = par
-                continue
-            fit['par'] = par
-            fit['covariance_matrix'] = covar_mat
-            fit['R^2'] = R_sq
-            fit['par_uncertainty'] = uncertainty
-            fpo = v.get('fitplot_options', {})
-            afpo = {**FITPLOT_OPTIONS, **fpo}
-            fle = fit['label'].format(p=par, par=par,
-                                      R=R_sq, R_squared=R_sq,
-                                      u=uncertainty, uncertainty=uncertainty)
-            ax.plot(
-                fit['contx'], fit['f'](fit['contx'], *par),
-                label=fle, color=color, **afpo)
+            fits = v.get('fit')
+            if not isinstance(fits, list):
+                fits = list(fits)
+            for fit_index, fit in enumerate(fits):
+                if not fit.get('manual', False):
+                    par, R_sq, uncertainty, covar_mat = fit_func(x, y,
+                                                                 fit['f'], fit['par'],
+                                                                 v.get('yerr'),
+                                                                 v.get('is_abs_err'),
+                                                                 fit['bounds'],
+                                                                 *fit.get('args', ()),
+                                                                 **fit.get('kwargs', {}))
+                else:
+                    par = fit['par']
+                    R_sq = R_squared_from_fit(x, y, fit['f'], par)
+                    uncertainty = np.inf
+                    covar_mat = np.full((len(par), len(par)), np.inf)
+                if isinstance(par, Exception):
+                    fit['error'] = par
+                    continue
+                if len(data) > 1:
+                    fstyle = {'color': color, 'linestyle': LINESTYLES[fit_index % len(LINESTYLES)]}
+                else:
+                    fstyle = fstyles[(fit_index) % len(fstyles)]
+                fit['par'] = par
+                fit['covariance_matrix'] = covar_mat
+                fit['R^2'] = R_sq
+                fit['par_uncertainty'] = uncertainty
+                fpo = v.get('fitplot_options', {})
+                afpo = {**FITPLOT_OPTIONS, **gpo, **fpo}
+                flfmt = fit.get('label', get_doc(fit['f'], ''))
+                fle = flfmt.format(p=par, par=par,
+                                   R=R_sq, R_squared=R_sq,
+                                   u=uncertainty, uncertainty=uncertainty,
+                                   M=MODE_TEXT[int(fit.get('manual', False)) % 2])
+                ax.plot(
+                    fit.get('contx', contx), fit['f'](fit.get('contx', contx), *par),
+                    label=fle, **fstyle, **afpo)
     plt.legend()
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
