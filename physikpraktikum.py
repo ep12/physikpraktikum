@@ -232,7 +232,7 @@ def read_csv(path: str,
                             d[i] = []
                     for x in h:
                         d[x] = []
-                if isinstance(types, list):
+                elif isinstance(types, list):
                     for i in range(len(p)):
                         d[h[i]].append(types[i](p[i]))
                 else:
