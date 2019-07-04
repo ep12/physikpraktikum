@@ -1,4 +1,4 @@
-from physikpraktikum.measured.units.unit import Unit, UnitComposition, UnitSystem
+from physikpraktikum.measured.units.unit import Unit, UnitComposition, UnitPrefix, UnitSystem
 #from physikpraktikum.measured.units.unit import Unit, UnitComposition, named_unit_composition as compose, find_single_combined_unit
 
 SI = UnitSystem('SI International System of Units')
@@ -42,26 +42,26 @@ Katal = SI('Catalytic activity', 'Katal', 'cat', r'\katal', Mole / Second) # TOD
 #    u._kwargs['hooks.print.str'] = print_smart
 ############################################################################################
 
-yocto = 10e-24
-zepto = 10e-21
-atto = 10e-18
-femto = 10e-15
-pico = 10e-12
-nano = 10e-9
-micro = 10e-6
-milli = 10e-3
-centi = 10e-2
-dezi = 10e-1
-Deka = 10e1
-Hecto = 10e2
-Kilo = 10e3
-Mega = 10e6
-Giga = 10e9
-Tera = 10e12
-Peta = 10e15
-Exa = 10e18
-Zetta = 10e21
-Yotta = 10e24
+yocto = SI.add_prefix(UnitPrefix('Yocto', 'y', r'\yocto', 1e-24)) # TODO: siunitx?
+zepto = SI.add_prefix(UnitPrefix('Zepto', 'z', r'\zepto', 1e-21))
+atto = SI.add_prefix(UnitPrefix('Atto', 'a', r'\atto', 1e-18))
+femto = SI.add_prefix(UnitPrefix('Femto', 'f', r'\femto', 1e-15))
+pico = SI.add_prefix(UnitPrefix('Pico', 'p', r'\pico', 1e-12))
+nano = SI.add_prefix(UnitPrefix('Nano', 'n', r'\nano', 1e-9))
+micro = SI.add_prefix(UnitPrefix('Micro', 'µ', r'\micro', 1e-6))
+milli = SI.add_prefix(UnitPrefix('Milli', 'm', r'\milli', 1e-3))
+centi = SI.add_prefix(UnitPrefix('Centi', 'c', r'\centi', 1e-2))
+dezi = SI.add_prefix(UnitPrefix('Deci', 'd', r'\deci', 1e-1))
+Deka = SI.add_prefix(UnitPrefix('Deca', 'da', r'\deca', 1e1))
+Hecto = SI.add_prefix(UnitPrefix('Hecto', 'h', r'\hecto', 1e2))
+Kilo = SI.add_prefix(UnitPrefix('Kilo', 'k', r'\kilo', 1e3))
+Mega = SI.add_prefix(UnitPrefix('Mega', 'M', r'\mega', 1e6))
+Giga = SI.add_prefix(UnitPrefix('Giga', 'G', r'\giga', 1e9))
+Tera = SI.add_prefix(UnitPrefix('Tera', 'T', r'\tera', 1e12))
+Peta = SI.add_prefix(UnitPrefix('Peta', 'P', r'\peta', 1e15))
+Exa = SI.add_prefix(UnitPrefix('Exa', 'E', r'\exa', 1e18))
+Zetta = SI.add_prefix(UnitPrefix('Zetta', 'Z', r'\zetta', 1e21))
+Yotta = SI.add_prefix(UnitPrefix('Yotta', 'Y', r'\yotta', 1e24))
 
 ############################################################################################
 

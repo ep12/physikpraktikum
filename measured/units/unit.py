@@ -202,6 +202,21 @@ Unit.__rtruediv__ = lambda self, other: UnitComposition({self: -1}, other)
 #    return unit_product
 
 
+class UnitPrefix:
+    def __init__(self, name: str, symbol: str, tex: str, factor: float):
+        self.name, self.symbol, self.tex = name, symbol, tex
+        self.factor = factor
+
+    def __str__(self):
+        return self.symbol
+
+    def __repr__(self):
+        return 'UnitPrefix(%r, %r, %r, %r)' % (self.name, self.symbol, self.tex, self.factor)
+
+    def __mul__(self, other):
+        return self.factor * other
+
+
 class UnitSystem:
     def __init__(self, system_name: str):
         self.system_name = system_name
@@ -211,6 +226,7 @@ class UnitSystem:
         self.derived_units = {}
         self.derived_units_vectors = {}
         self.aliases = {}
+        self.prefixes = {}
 
     def __call__(self, quantity: str, name: str, symbol: str, tex: str,
                  as_composition: UnitComposition = None,
@@ -220,7 +236,7 @@ class UnitSystem:
                                                               'symbol': symbol, 'tex': tex}
             ret = as_composition
             self.derived_units[name] = ret
-            d = ret._dict # unit: exp
+            d = ret._dict # TODO: BUG
             #for k in d.keys():
             #    if k not in self.base_units:
             #        print(k)
@@ -233,6 +249,10 @@ class UnitSystem:
             self._add_base_unit(ret)
         self._add_alias(ret)
         return ret
+
+    def add_prefix(self, prefix):
+        self.prefixes[prefix.name] = prefix
+        return prefix
 
     def _add_alias(self, unit):
         if isinstance(unit, Unit):
@@ -289,6 +309,8 @@ class UnitSystem:
         for u in self.units.values():
             tag = 'BaseUnit' if isinstance(u, Unit) else 'UnitComposition'
             out += '\t%s\t: %s\n' % (tag, describe(u))
+        for v in self.prefixes.values():
+            out += '\tUnitPrefix\t: %r\n' % v
         out += '</UnitSystem>'
         return out
 
@@ -312,6 +334,8 @@ class UnitSystem:
                 out += '\tUnitComposition\t: %s\t: symbol %r (no long name)\n' % (v, symbol)
             else:
                 out += '\tUnitComposition\t: %s\t: (no long name or symbol)\n' % v
+        for v in self.prefixes.values():
+            out += '\tUnitPrefix\t: %r\n' % v
         out += '</UnitSystem>'
         return out
 
