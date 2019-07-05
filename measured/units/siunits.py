@@ -66,13 +66,13 @@ Yotta = SI.add_prefix(UnitPrefix('Yotta', 'Y', r'\yotta', 1e24))
 
 ############################################################################################
 
-Metre = m = Meter
-kg = Kilogram
-s = Second
-A = Ampere
-K = Kelvin
-mol = Mole
-cd = Candela
+#Metre = m = Meter
+#kg = Kilogram
+#s = Second
+#A = Ampere
+#K = Kelvin
+#mol = Mole
+#cd = Candela
 
 ############################################################################################
 
@@ -136,6 +136,7 @@ Neper = SI.add_poor_unit('Neper', 'Np', r'\neper', 1, lambda x: np.exp(x), lambd
 
 
 if __name__ == '__main__':
+    from pprint import pprint
     test = [
         #Meter / Meter, # 1
         #1 / Second, # Hz
@@ -171,3 +172,19 @@ if __name__ == '__main__':
     print(2 * Meter * 4 * Meter)
     print((2 * Meter * 4 * Meter) ** (-1))
     print(17 * Newton / (2 * Meter * 4 * Meter))
+    Area = ((Meter * np.array([1, 2, 3])) @ (Meter * np.array([-1, 0, 1])))
+    Force = 50 * Newton
+    print(Force / Area)
+    vec1 = np.array([1, 2, 3]) * Meter
+    #print(vec1 @ np.array([-1, 0, 1]))
+    #pprint(vec1.__dir__())
+    #print(Area, type(Area))
+    #pprint(Area.__dict__)
+    print(([1, 2, 3] * Meter) @ ([7, 8, 9] * Hertz))
+    print()
+    x = ([3, 4] * Meter) @ [2, 5]
+    print(2 * x)
+    x = 7 * Second * 3 * Hertz
+    print(x, type(x))
+    #for a in dir(x):
+    #    print(a, '\t', getattr(x, a))

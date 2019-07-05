@@ -113,6 +113,8 @@ class Unit:
             return UnitComposition(self, other, **get_unit_system(self, 1))
         if isinstance(other, Measurement):
             return Measurement(other.value, other.unit * self)
+        if isinstance(other, np.ndarray):
+            return Measurement(other, self)
         if other == 1:
             return self
         return Measurement(other, self)
@@ -366,6 +368,8 @@ class UnitPrefix:
         return 'UnitPrefix(%r, %r, %r, %r)' % (self.name, self.symbol, self.tex, self.factor)
 
     def __mul__(self, other):
+        if isinstance(other, (Unit, UnitComposition)):
+            raise TypeError('DO NOT MULTIPLY A PREFIX AND A UNIT! Multiply a number with a prefix and the result with a unit!')
         return self.factor * other
 
     def __rmul__(self, other):
@@ -592,7 +596,7 @@ class Measurement:
             return abs(other - self.nominal_value) <= self.std_dev
 
     def __eq__(self, other):
-        if isinstance(other, self.__class__):
+        if isinstance(other, Measurement):
             return self.nominal_value == other.nominal_value
         elif isinstance(other, (Unit, UnitComposition)):
             return self.unit == other
@@ -600,25 +604,45 @@ class Measurement:
             return self.nominal_value == other
 
     def __mul__(self, other):
-        if isinstance(other, self.__class__):
+        if isinstance(other, Measurement):
             self.unit.unit_system.check_compatible(other.unit_system)
+            if self.unit * other.unit == 1:
+                return self.value * other.value
             return Measurement(self.value * other.value, self.unit * other.unit, self.unit_system)
         elif isinstance(other, (Unit, UnitComposition)):
+            if self.unit * other == 1:
+                return self.value
             return Measurement(self.value, self.unit * other, self.unit_system)
         else:
             return Measurement(self.value * other, self.unit, self.unit_system)
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __matmul__(self, other):
+        # always use numpy ufuncs for mul, div, too?
+        if isinstance(other, Measurement):
+            if self.unit * other.unit == 1:
+                return np.matmul(self.value, other.value)
+            return Measurement(np.matmul(self.value, other.value), self.unit * other.unit, self.unit_system)
+        else:
+            return Measurement(np.matmul(self.value, other), self.unit, self.unit_system)
 
     def __truediv__(self, other):
         if isinstance(other, Measurement):
             self.unit.unit_system.check_compatible(other.unit_system)
             if other == 0:
                 raise ZeroDivisionError(self, other)
+            if self.unit * other.unit == 1:
+                return self.value / other.value
             return Measurement(self.value / other.value, self.unit / other.unit, self.unit_system)
         elif isinstance(other, (UFloat, self.__class__)):
             if other.nominal_value == 0:
                 raise ZeroDivisionError(self, other)
             return Measurement(self.value / other.value, self.unit / other.unit, self.unit_system)
         elif isinstance(other, (Unit, UnitComposition)):
+            if self.unit / other == 1:
+                return self.value
             return Measurement(self.value, self.unit / other, self.unit_system)
         else:
             if other == 0:
@@ -633,6 +657,8 @@ class Measurement:
                 return np.NaN
             else:
                 return 1 * self.unit ** e
+        if e == 0:
+            return 1
         return Measurement(self.value ** e, self.unit ** e, self.unit_system)
 
     def __rtruediv__(self, other):
@@ -643,6 +669,8 @@ class Measurement:
             self.unit.unit_system.check_compatible(other.unit_system)
             if other.unit != self.unit:
                 raise UnitClashError('Unit mismatch: %s and %s' % (self, other))
+            if self.unit == 1:
+                return self.value + other.value
             return Measurement(self.value + other.value, self.unit, self.unit_system)
         else:
             if self.unit == 1 or self.unit.is_neutral:
