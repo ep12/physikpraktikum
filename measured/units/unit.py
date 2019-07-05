@@ -1,6 +1,6 @@
 from itertools import chain
 from warnings import warn
-from typing import Union, List
+from typing import Union, List, Callable
 import numpy as np
 from uncertainties import UFloat
 from physikpraktikum.utils.characters import sup as superscript
@@ -259,7 +259,9 @@ class UnitComposition:
             return self
         if isinstance(other, Measurement):
             return Measurement(other.value, other.unit * self)
-        return UnitComposition(other, self, **get_unit_system(self, 1))
+        if isinstance(other, (Unit, UnitComposition)):
+            return UnitComposition(other, self, **get_unit_system(self, 1))
+        return Measurement(other, self)
 
     def __rmul__(self, other):
         return self * other
@@ -323,32 +325,33 @@ class UnitComposition:
         return self._kwargs.get('NamedUnitComposition', {}).get('tex', '')
 
 
-#class PoorUnit: # TODO
-#    '''A class to represent stupid established units (miles, hours, degree, celsius, fahrenheit)'''
-#    def __init__(self, name: str, symbol: str, tex: str,
-#                 related_base_unit: Unit,
-#                 to_base_unit,
-#                 from_base_unit):
-#        assert callable(to_base_unit), 'to_base_unit must be callable'
-#        assert callable(from_base_unit), 'from_base_unit must be callable'
-#        self.name, self.symbol, self.tex = name, symbol, tex
-#        self.base_unit = related_base_unit
-#        self.to_base = to_base_unit
-#        self.from_base = from_base_unit
-#
-#    def __mul__(self, value):
-#        return self.to_base(value) * self.base_unit # TODO
+class PoorUnit: # TODO
+    '''A class to represent stupid established units (miles, hours, degree, celsius, fahrenheit)'''
+    def __init__(self, name: str, symbol: str, tex: str,
+                 related_base_unit: Unit,
+                 to_base_unit,
+                 from_base_unit):
+        assert callable(to_base_unit), 'to_base_unit must be callable'
+        assert callable(from_base_unit), 'from_base_unit must be callable'
+        self.name, self.symbol, self.tex = name, symbol, tex
+        self.base_unit = related_base_unit
+        self.to_base = to_base_unit
+        self.from_base = from_base_unit
 
+    def __mul__(self, value):
+        return self.to_base(value) * self.base_unit
 
-#def named_unit_composition(unit_product: UnitComposition,
-#                           quantity: str,
-#                           name: str,
-#                           symbol: str,
-#                           tex: str):
-#    assert isinstance(unit_product, UnitComposition)
-#    unit_product._kwargs['NamedUnitComposition'] = {'quantity': quantity, 'name': name,
-#                                                    'symbol': symbol, 'tex': tex}
-#    return unit_product
+    def __rmul__(self, value):
+        return self.to_base(value) * self.base_unit
+
+    def __truediv__(self, value):
+        return self.to_base(1 / value) * self.base_unit
+
+    def __rtruediv__(self, value):
+        return 1 / self.to_base(1 / value) / self.base_unit
+
+    def __str__(self):
+        return 'PoorUnit:\t %s (symbol %r, base %s)' % (self.name, self.symbol, self.base_unit)
 
 
 class UnitPrefix:
@@ -365,6 +368,9 @@ class UnitPrefix:
     def __mul__(self, other):
         return self.factor * other
 
+    def __rmul__(self, other):
+        return self.factor * other
+
 
 class UnitSystem:
     def __init__(self, system_name: str):
@@ -377,6 +383,7 @@ class UnitSystem:
         self.aliases = {}
         self.prefixes = {}
         self.compatible_systems = []
+        self.poor_units = []
 
     def __call__(self, quantity: str, name: str, symbol: str, tex: str,
                  as_composition: UnitComposition = None,
@@ -404,6 +411,14 @@ class UnitSystem:
     def add_prefix(self, prefix):
         self.prefixes[prefix.name] = prefix
         return prefix
+
+    def add_poor_unit(self, name: str, symbol: str, tex: str,
+                      base_unit: Union[Unit, UnitComposition],
+                      to_base: Callable[[float], float],
+                      from_base: Callable[[float], float]):
+        x = PoorUnit(name, symbol, tex, base_unit, to_base, from_base)
+        self.poor_units.append(x)
+        return x
 
     def _add_alias(self, unit):
         if isinstance(unit, Unit):
@@ -462,6 +477,8 @@ class UnitSystem:
             out += '\t%s\t: %s\n' % (tag, describe(u))
         for v in self.prefixes.values():
             out += '\tUnitPrefix\t: %r\n' % v
+        for p in self.poor_units:
+            out += '\t%s\n' % p
         out += '</UnitSystem>'
         return out
 
@@ -584,7 +601,7 @@ class Measurement:
 
     def __mul__(self, other):
         if isinstance(other, self.__class__):
-            self.unit_system.check_compatible(other.unit_system)
+            self.unit.unit_system.check_compatible(other.unit_system)
             return Measurement(self.value * other.value, self.unit * other.unit, self.unit_system)
         elif isinstance(other, (Unit, UnitComposition)):
             return Measurement(self.value, self.unit * other, self.unit_system)
@@ -593,7 +610,7 @@ class Measurement:
 
     def __truediv__(self, other):
         if isinstance(other, Measurement):
-            self.unit_system.check_compatible(other.unit_system)
+            self.unit.unit_system.check_compatible(other.unit_system)
             if other == 0:
                 raise ZeroDivisionError(self, other)
             return Measurement(self.value / other.value, self.unit / other.unit, self.unit_system)
@@ -623,7 +640,7 @@ class Measurement:
 
     def __add__(self, other):
         if isinstance(other, Measurement):
-            self.unit_system.check_compatible(other.unit_system)
+            self.unit.unit_system.check_compatible(other.unit_system)
             if other.unit != self.unit:
                 raise UnitClashError('Unit mismatch: %s and %s' % (self, other))
             return Measurement(self.value + other.value, self.unit, self.unit_system)
