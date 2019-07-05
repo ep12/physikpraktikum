@@ -16,7 +16,7 @@ Candela = SI('Luminous intensity', 'Candela', 'cd', 'r\candela')
 Radian = SI('Planar angle', 'Radian', 'rad', r'\radian', Meter / Meter) # TODO: siunitx support?
 Steradian = SI('Solid angle', 'Steradian', 'sr', r'\steradian', Meter ** 2 / Meter ** 2) # TODO: siunitx support?
 
-Hertz = SI('Frequency', 'Hertz', 'Hz', r'\hertz', 1 / Second)
+Hertz = SI('Frequency', 'Hertz', 'Hz', r'\hertz',  1 / Second)
 Becquerel = SI('Radioactivity', 'Becquerel', 'Bq', r'\hertz', 1 / Second) # TODO: siunitx support?
 Coulomb = SI('Electric charge', 'Coulomb', 'C', r'\coulomb', Ampere * Second)
 Newton = SI('Force', 'Newton', 'N', r'\newton', Kilogram * Meter / Second ** 2)
@@ -78,20 +78,22 @@ units_and_prefixes = {k: v for k, v in locals().copy().items() if '__' not in k 
 
 
 if __name__ == '__main__':
-    #for x in [Second, Kilogram, Meter, Ampere, Candela, Kelvin, Mole]:
-    #    print('%r' % x)
-    #print(Hertz)
-    #print(Newton)
-    #print(Newton * Second ** 2 / Meter)
-    #for x in all_well_known_units:
-    #    print(x, repr(x))
-    #print(Joule / (Kilogram * Kelvin))
-    #print(Weber / Meter ** 2 == Tesla)
-    print('HERE ' *  10)
-    #test = Joule / Weber
-    test = Hertz / Newton
-    print(test)
-    print(SI)
-    #for k, v in test._kwargs.items():
-    #    print(k, v)
-    print(SI.str_vector_representation)
+    test = [
+        #Meter / Meter, # 1
+        #1 / Second, # Hz
+        #Ampere * Second, # C
+        #Kilogram * Meter * Hertz ** 2, # N
+        #Newton / Meter ** 2, # Pa
+        #Newton * Meter, # J
+        #Joule / Second, # W
+        #Watt * Second, # J
+        #Joule / Coulomb, # V
+        #Farad * Volt, # C <-
+        Ampere / Sievert, # <-
+        #Tesla * Meter ** 2, # Wb
+        #Katal * Second, # Mole
+        #Gray * Kilogram, #  J
+        #Ampere * Henry # Wb
+    ]
+    for x in test:
+        print(x, ':', x.as_base_units)
