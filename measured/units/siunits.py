@@ -66,13 +66,9 @@ Yotta = SI.add_prefix(UnitPrefix('Yotta', 'Y', r'\yotta', 1e24))
 
 ############################################################################################
 
-#Metre = m = Meter
-#kg = Kilogram
-#s = Second
-#A = Ampere
-#K = Kelvin
-#mol = Mole
-#cd = Candela
+# This list is probably not complete!
+SI._definitely_as_base_units.append(Meter / Second) # would be sqrt(Sv) which is obviously shorter but not intuitive
+
 
 ############################################################################################
 
@@ -188,3 +184,17 @@ if __name__ == '__main__':
     print(x, type(x))
     #for a in dir(x):
     #    print(a, '\t', getattr(x, a))
+    #print(SI.as_vector(Weber))
+    #print(SI.base_units.keys())
+    print(Meter ** 2 * Kilogram * Second ** (-2) * Ampere ** (-1))
+    print(Newton * Candela)
+    #pprint(SI.as_matrix, width=240)
+    print([1, 2, 3] * Meter * 5 * Meter)
+    v = [80, 43, 21] * Kilo * Meter / (1 * Hour)
+    print(v)
+    print(v.norm)
+    print([80, 0, 0] * Kilo)
+    print((Joule / Kilogram).as_base_units)
+    print(Meter / Second)
+    print(Meter / Second ** 2)
+    print(np.sin(5 * Hertz * 10 * Second) * 10 * Volt)
