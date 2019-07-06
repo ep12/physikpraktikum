@@ -1,0 +1,2 @@
+class WriteProtectedError(AttributeError):
+    pass

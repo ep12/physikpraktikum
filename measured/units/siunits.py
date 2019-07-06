@@ -1,8 +1,8 @@
 import numpy as np
 from physikpraktikum.measured.units.unit import Unit, UnitComposition, UnitPrefix, UnitSystem
-#from physikpraktikum.measured.units.unit import Unit, UnitComposition, named_unit_composition as compose, find_single_combined_unit
+from physikpraktikum.utils.representations import longstr, describe
 
-SI = UnitSystem('SI International System of Units')
+SI = UnitSystem('SI International System of Units', limit_combined_units = 4)
 
 Meter = SI('Length', 'Meter', 'm', r'\meter')
 Kilogram = SI('Mass', 'Kilogram', 'kg', r'\kilo\gram')
@@ -10,37 +10,32 @@ Second = SI('Time', 'Second', 's', r'\second')
 Ampere = SI('Electric current', 'Ampere', 'A', r'\ampere')
 Kelvin = SI('Thermodynamic temperature', 'Kelvin', 'K', r'\kelvin')
 Mole = SI('Amount of substance', 'Mole', 'mol', r'\mole')
-Candela = SI('Luminous intensity', 'Candela', 'cd', 'r\candela')
+Candela = SI('Luminous intensity', 'Candela', 'cd', r'\candela')
 
 ############################################################################################
 
-Radian = SI('Planar angle', 'Radian', 'rad', r'\radian', Meter / Meter) # TODO: siunitx support?
-Steradian = SI('Solid angle', 'Steradian', 'sr', r'\steradian', Meter ** 2 / Meter ** 2) # TODO: siunitx support?
+Radian = SI('Planar angle', 'Radian', 'rad', r'\radian', Meter / Meter)
+Steradian = SI('Solid angle', 'Steradian', 'sr', r'\steradian', Meter ** 2 / Meter ** 2)
 
 Hertz = SI('Frequency', 'Hertz', 'Hz', r'\hertz',  1 / Second)
-Becquerel = SI('Radioactivity', 'Becquerel', 'Bq', r'\hertz', 1 / Second) # TODO: siunitx support?
+Becquerel = SI('Radioactivity', 'Becquerel', 'Bq', r'\becquerel', 1 / Second)
 Coulomb = SI('Electric charge', 'Coulomb', 'C', r'\coulomb', Ampere * Second)
 Newton = SI('Force', 'Newton', 'N', r'\newton', Kilogram * Meter / Second ** 2)
 
-Pascal = SI('Pressure', 'Pascal', 'Pa', r'\pascal', Newton / Meter ** 2) # TODO: siunitx support?
-Joule = SI('Energy', 'Joule', 'J', r'\joule', Newton * Meter) # TODO: siunitx?
-Watt = SI('Power', 'Watt', 'W', r'\watt', Joule / Second) # TODO: siunitx?
+Pascal = SI('Pressure', 'Pascal', 'Pa', r'\pascal', Newton / Meter ** 2)
+Joule = SI('Energy', 'Joule', 'J', r'\joule', Newton * Meter)
+Watt = SI('Power', 'Watt', 'W', r'\watt', Joule / Second)
 Volt = SI('Voltage', 'Volt', 'V', r'\volt', Joule / Coulomb)
 Farad = SI('Electric capacitance', 'Farad', 'F', r'\farad', Coulomb / Volt)
 Ohm = SI('Electric resistance', 'Ohm', 'Ω', r'\ohm', Volt / Ampere)
-Siemens = SI('Eletric conductance', 'Siemens', 'S', r'\siemens', 1 / Ohm) # TODO: siunitx?
-Weber = SI('Magnetic flux', 'Weber', 'Wb', r'\weber', Volt * Second) # TODO: siunitx?
-Tesla = SI('Magnetic induction', 'Tesla', 'T', r'\tesla', Weber / Meter ** 2) # TODO: siunitx?
-Henry = SI('Electric inductance', 'Henry', 'H', r'\henry', Weber / Ampere) # TODO: siunitx?
-Gray = SI('Absorbed dose of ionizing radiation', 'Gray', 'Gy', r'\gray', Joule / Kilogram) # TODO: siunitx?!
-Sievert = SI('Health effect of ionizing radiation', 'Sievert', 'Sv', r'\sievert', Joule / Kilogram) # TODO: siunitx?
-Katal = SI('Catalytic activity', 'Katal', 'cat', r'\katal', Mole / Second) # TODO: siunitx?
+Siemens = SI('Eletric conductance', 'Siemens', 'S', r'\siemens', 1 / Ohm)
+Weber = SI('Magnetic flux', 'Weber', 'Wb', r'\weber', Volt * Second)
+Tesla = SI('Magnetic induction', 'Tesla', 'T', r'\tesla', Weber / Meter ** 2)
+Henry = SI('Electric inductance', 'Henry', 'H', r'\henry', Weber / Ampere)
+Gray = SI('Absorbed dose of ionizing radiation', 'Gray', 'Gy', r'\gray', Joule / Kilogram)
+Sievert = SI('Health effect of ionizing radiation', 'Sievert', 'Sv', r'\sievert', Joule / Kilogram)
+Katal = SI('Catalytic activity', 'Katal', 'cat', r'\katal', Mole / Second)
 
-#all_well_known_units = [v for k, v in locals().copy().items() if '__' not in k and isinstance(v, (Unit, UnitComposition))]
-
-
-#for u in all_well_known_units:
-#    u._kwargs['hooks.print.str'] = print_smart
 ############################################################################################
 
 yocto = SI.add_prefix(UnitPrefix('Yocto', 'y', r'\yocto', 1e-24)) # TODO: siunitx?
@@ -75,40 +70,59 @@ SI._definitely_as_base_units.append(Meter / Second ** 2) # would be sqrt(Sv) * B
 
 # TODO
 # (number * prefix) * unit!
-# (10 * milli) * litre!
+# (10 * milli) * litre! vs 10 * (milli * litre)
 
-Minute = SI.add_poor_unit('Minute', 'min', r'\minute', Second, lambda T: 60 * T, lambda t: t / 60)
-Hour = SI.add_poor_unit('Hour', 'h', r'\hour', Second, lambda T: 3600 * T, lambda t: t / 3600)
-Day = SI.add_poor_unit('Day', 'day', r'\day', Second, lambda T: 86400 * T, lambda t: t / 86400)
-JulianYear = SI.add_poor_unit('Julian year', 'year', r'\year', Second, lambda T: 365.25 * 86400 * T, lambda t: t / (365.25 * 86400))
+Degree = SI.add_poor_unit('Degree', '°', r'\degree', Radian,
+                          lambda k: k * np.pi / 180, lambda k: k * 180 / np.pi, is_linear=True)
+Arcminute = SI.add_poor_unit('Arcminute', 'arcmin', r'\arcminute', Radian,
+                             lambda k: k * np.pi / 10800, lambda k: k * 10800 / np.pi, is_linear=True)
+Arcsecond = SI.add_poor_unit('Arcsecond', 'arcsec', r'\arcsecond', Radian,
+                             lambda k: k * np.pi / 648000, lambda k: k * 648000 / np.pi, is_linear=True)
+Gon = SI.add_poor_unit('Gon', 'gon', r'\gradian', Radian, # TODO: siunitx: no gradian!
+                       lambda k: k * np.pi / 200, lambda k: k * 200 / np.pi, is_linear=True)
+Gradian = Gon
 
 
-Celsius = SI.add_poor_unit('Degree Celsius', '°C', r'\celsius', Kelvin, lambda c: c + 273.15, lambda k: k - 273.15)
-Fahrenheit = SI.add_poor_unit('Degree Fahrenheit', '°F', r'\fahrenheit', Kelvin,
+Minute = SI.add_poor_unit('Minute', 'min', r'\minute', Second, lambda T: 60 * T, lambda t: t / 60, is_linear=True)
+Hour = SI.add_poor_unit('Hour', 'h', r'\hour', Second, lambda T: 3600 * T, lambda t: t / 3600, is_linear=True)
+Day = SI.add_poor_unit('Day', 'day', r'\day', Second, lambda T: 86400 * T, lambda t: t / 86400, is_linear=True)
+JulianYear = SI.add_poor_unit('Julian year', 'year', r'\year', Second, # TODO: siunitx: no year!
+                              lambda T: 365.25 * 86400 * T, lambda t: t / (365.25 * 86400), is_linear=True)
+
+
+Celsius = SI.add_poor_unit('Degree Celsius', '°C', r'\celsius', Kelvin, lambda c: c + 273.15, lambda k: k - 273.15) # siunitx: degreeCelsius?
+Fahrenheit = SI.add_poor_unit('Degree Fahrenheit', '°F', r'\fahrenheit', Kelvin, # siunitx: ?
                               lambda x: (x + 459.67) * 5 / 9, lambda x: 9 / 5 * x - 459.67)
-Rankine = SI.add_poor_unit('Degree Rankine', '°R', r'\rankine', Kelvin, lambda x: x * 5 / 9, lambda x: x * 9 / 5)
+Rankine = SI.add_poor_unit('Degree Rankine', '°R', r'\rankine', Kelvin, lambda x: x * 5 / 9, lambda x: x * 9 / 5) # siunitx: ?
 Delisle = SI.add_poor_unit('Degree Delisle', '°De', r'\delisle', Kelvin,
-                           lambda x: 373.15 - 2 / 3 * x, lambda x: (373.15 - x) * 3 / 2)
+                           lambda x: 373.15 - 2 / 3 * x, lambda x: (373.15 - x) * 3 / 2) # siunitx: ?
 DegreeNewton = SI.add_poor_unit('Degree Newton', '°N', r'\degnewton', Kelvin,
-                                lambda x: x * 100 / 33 + 273.15, lambda x: (x - 273.15) * 33 / 100)
+                                lambda x: x * 100 / 33 + 273.15, lambda x: (x - 273.15) * 33 / 100) # siunitx: ?
 Reamur = SI.add_poor_unit('Degree Réaumur', '°Ré', r'\reamur', Kelvin,
-                          lambda x: x * 5 / 4 + 273.15, lambda x: (x - 273.15) * 4 / 5)
+                          lambda x: x * 5 / 4 + 273.15, lambda x: (x - 273.15) * 4 / 5) # siunitx: ?
 Romer = SI.add_poor_unit('Degree Rømer', '°Rø', r'\romer', Kelvin,
-                         lambda x: (x - 7.5) * 40 / 21 + 273.15, lambda x: (x - 273.15) * 21 / 40 + 7.5) # THE WORST!
+                         lambda x: (x - 7.5) * 40 / 21 + 273.15, lambda x: (x - 273.15) * 21 / 40 + 7.5) # siunitx: ? # THE WORST!
 
 
-ImperialInch = SI.add_poor_unit('Imperial Inch', 'in', r'\inch', Meter, lambda M: 25.4e-3 * M, lambda k: k / 25.4e-3)
-ImperialFoot = SI.add_poor_unit('Imperial Foot', 'ft', r'\foot', Meter, lambda M: 0.3048 * M, lambda k: k / 0.3048)
-ImperialYard = SI.add_poor_unit('Imperial Yard', 'yd', r'\yard', Meter, lambda M: 0.9144 * M, lambda k: k / 0.9144)
-ImperialMile = SI.add_poor_unit('Imperial Mile', 'mi', r'\mile', Meter, lambda M: 1609.344 * M, lambda k: k / 1609.344)
-NauticalMile = SI.add_poor_unit('Nautical Mile', 'nmi', r'\nauticalmile', Meter, lambda M: 1852 * M, lambda k: k / 1852)
-Smoot = SI.add_poor_unit('Smoot', 'smoot', r'\smoot', Meter, lambda S: S * 1.702, lambda k: k / 1.702)
+ImperialInch = SI.add_poor_unit('Imperial Inch', 'in', r'\inch', Meter,
+                                lambda M: 25.4e-3 * M, lambda k: k / 25.4e-3, is_linear=True) # siunitx: ?
+ImperialFoot = SI.add_poor_unit('Imperial Foot', 'ft', r'\foot', Meter,
+                                lambda M: 0.3048 * M, lambda k: k / 0.3048, is_linear=True) # siunitx: ?
+ImperialYard = SI.add_poor_unit('Imperial Yard', 'yd', r'\yard', Meter,
+                                lambda M: 0.9144 * M, lambda k: k / 0.9144, is_linear=True) # siunitx: ?
+ImperialMile = SI.add_poor_unit('Imperial Mile', 'mi', r'\mile', Meter,
+                                lambda M: 1609.344 * M, lambda k: k / 1609.344, is_linear=True) # siunitx: ?
+NauticalMile = SI.add_poor_unit('Nautical Mile', 'nmi', r'\nauticalmile', Meter,
+                                lambda M: 1852 * M, lambda k: k / 1852, is_linear=True)
+Smoot = SI.add_poor_unit('Smoot', 'smoot', r'\smoot', Meter, lambda S: S * 1.702, lambda k: k / 1.702, is_linear=True) # siunitx: ?
 AstronomicalUnit = SI.add_poor_unit('Astronomical unit', 'au', r'\astronomicalunit', Meter,
-                                    lambda B: 149597870700 * B, lambda m: m / 149597870700) # defined: 149597870700 m
+                                    lambda B: 149597870700 * B, lambda m: m / 149597870700, is_linear=True) # defined: 149597870700 m
 Lightyear = SI.add_poor_unit('Lightyear', 'ly', r'\lightyear', Meter,
-                             lambda M: (365.25 * 86400 * 299792358) * M, lambda k: k / (365.25 * 86400 * 299792358)) # 1 year * c
+                             lambda M: (365.25 * 86400 * 299792358) * M, lambda k: k / (365.25 * 86400 * 299792358), # siunitx: ?
+                             is_linear=True) # 1 year * c
 Parsec = SI.add_poor_unit('Parsec', 'pc', r'\parsec', Meter,
-                          lambda P: (648000 / np.pi * 149597870700) * P, lambda k: k / (648000 / np.pi * 149597870700)) # 648000/pi AU
+                          lambda P: (648000 / np.pi * 149597870700) * P, lambda k: k / (648000 / np.pi * 149597870700), # siunitx: ?
+                          is_linear=True) # 648000/pi AU
 
 
 Hectare = SI.add_poor_unit('Hectare', 'ha', r'\hectare', Meter ** 2,
@@ -119,13 +133,15 @@ Litre = SI.add_poor_unit('Litre', 'L', r'\litre', Meter ** 3,
                          lambda L: L * 1e-3, lambda k: k * 1e3)
 
 
-MetricTonne = SI.add_poor_unit('Metric tonne', 't', r'\tonne', Kilogram, lambda x: 1e3 * x, lambda x: 1e-3 * x)
-Gram = SI.add_poor_unit('Gram', 'g', r'\gram', Kilogram, lambda x: 1e-3 * x, lambda x: 1e3 * x)
-AtomicMassUnit = SI.add_poor_unit('Atomic mass unit', 'AMU', r'\amu', Kilogram, lambda x: 1.66053906660e-27 * x, lambda x: x / 1.66053906660e-27)
+MetricTonne = SI.add_poor_unit('Metric tonne', 't', r'\tonne', Kilogram, lambda x: 1e3 * x, lambda x: 1e-3 * x, is_linear=True)
+Gram = SI.add_poor_unit('Gram', 'g', r'\gram', Kilogram, lambda x: 1e-3 * x, lambda x: 1e3 * x, is_linear=True)
+AtomicMassUnit = SI.add_poor_unit('Atomic mass unit', 'AMU', r'\atomicmassunit', Kilogram,
+                                  lambda x: 1.66053906660e-27 * x, lambda x: x / 1.66053906660e-27, is_linear=True)
 Dalton = AMU = AtomicMassUnit
 
 
-Electronvolt = SI.add_poor_unit('Electronvolt', 'eV', r'\electronvol', Joule, lambda x: 1.602176634e-19 * x, lambda x: x / 1.602176634e-19)
+Electronvolt = SI.add_poor_unit('Electronvolt', 'eV', r'\electronvolt', Joule,
+                                lambda x: 1.602176634e-19 * x, lambda x: x / 1.602176634e-19, is_linear=True)
 
 
 Neper = SI.add_poor_unit('Neper', 'Np', r'\neper', 1, lambda x: np.exp(x), lambda x: np.log(x))
@@ -133,25 +149,6 @@ Neper = SI.add_poor_unit('Neper', 'Np', r'\neper', 1, lambda x: np.exp(x), lambd
 
 if __name__ == '__main__':
     from pprint import pprint
-    test = [
-        #Meter / Meter, # 1
-        #1 / Second, # Hz
-        #Ampere * Second, # C
-        #Kilogram * Meter * Hertz ** 2, # N
-        #Newton / Meter ** 2, # Pa
-        #Newton * Meter, # J
-        #Joule / Second, # W
-        #Watt * Second, # J
-        #Joule / Coulomb, # V
-        #Farad * Volt, # C <-
-        Ampere / Sievert, # <-
-        #Tesla * Meter ** 2, # Wb
-        #Katal * Second, # Mole
-        #Gray * Kilogram, #  J
-        #Ampere * Henry # Wb
-    ]
-    for x in test:
-        print(x, ':', x.as_base_units)
     print(SI)
     print(2 * Minute)
     print(30 / Minute)
@@ -208,5 +205,34 @@ if __name__ == '__main__':
     print(E.cross(H)) # Correctly calculates the poynting vector with the unit Watt per square meter
     print((Watt / Meter ** 2).as_base_units)
     x = Watt * Meter / Kelvin * Candela ** 2
-    print(x.as_base_units, '=', x)
+    print(x)
+    print(x.as_base_units(), '=', x)
     print(Meter ** 2 * Kilogram * Second * Ampere * Kelvin / Candela / Mole)
+    print(Farad * Newton * Ampere ** (-2) / Meter * Joule * Second)
+    #  C F kg Hz J^3 N A^-2 K^-2 mol^-1 T^-1  # Unitful.jl outputs 10 cluttered units
+    x = Coulomb * Farad * Kilogram * Hertz * Joule ** 3 * Newton / (Ampere ** 2 * Kelvin ** 2 * Mole * Tesla)
+    print(x.as_base_units, '=', x) # We need 6 == 6 base units are in this product
+    print(Ampere * Second / (Volt * Meter))
+
+    vol = 1000 * (milli * Litre)
+    #print((1000 * milli) * Litre)
+    print('1 L', 1 * Litre)
+    print('1000 mL', 1000 * (milli * Litre), (1000 * milli) * Litre)
+    print('1 mL', milli * Litre)
+    print('1 in', 1 * ImperialInch)
+    print('1 in^2', (1 * ImperialInch) ** 2)
+    print('10 in^2', 10 * ImperialInch ** 2)
+    print('10 ft^3', 10 * ImperialFoot ** 3)
+    print(Litre.from_base(1000 * (milli * Litre)))
+    print('10 ha', 10 * Hectare)
+    print('10 mha', 10 * milli * Hectare)
+    print('10 (cm)^3', 10 * (centi * Meter) ** 3)
+    print('10 c m^3', 10 * centi * Meter ** 3)
+    print(r'\documentclass{article}')
+    print(r'\usepackage{siunitx}')
+    print(r'\begin{document}')
+    for k, v in SI.units.items():
+        print(k, '(%s)' % v.tex.replace('\\', '+'), r': $\SI{1.0}{', v.tex, r'}$\\', sep='')
+    print(r'\end{document}')
+    print(longstr(Meter))
+    print(longstr(Newton), longstr(Newton ** 2 * Meter ** (11)), longstr(Newton ** (17) * Candela ** 2))
