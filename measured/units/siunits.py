@@ -68,7 +68,7 @@ Yotta = SI.add_prefix(UnitPrefix('Yotta', 'Y', r'\yotta', 1e24))
 
 # This list is probably not complete!
 SI._definitely_as_base_units.append(Meter / Second) # would be sqrt(Sv) which is obviously shorter but not intuitive
-
+SI._definitely_as_base_units.append(Meter / Second ** 2) # would be sqrt(Sv) * Bq
 
 ############################################################################################
 
@@ -198,3 +198,15 @@ if __name__ == '__main__':
     print(Meter / Second)
     print(Meter / Second ** 2)
     print(np.sin(5 * Hertz * 10 * Second) * 10 * Volt)
+    x = Newton * Kelvin
+    print(x, type(x))
+    y = SI._optise_vector_combination(x)
+    E = [7, 1, -2] * Volt / Meter
+    mu_0 = 1.2566370614359173e-6 * Newton / Ampere ** 2
+    B = [4, -2, 1] * micro * Tesla
+    H = B / mu_0
+    print(E.cross(H)) # Correctly calculates the poynting vector with the unit Watt per square meter
+    print((Watt / Meter ** 2).as_base_units)
+    x = Watt * Meter / Kelvin * Candela ** 2
+    print(x.as_base_units, '=', x)
+    print(Meter ** 2 * Kilogram * Second * Ampere * Kelvin / Candela / Mole)

@@ -556,8 +556,8 @@ class UnitSystem:
 
     def _optise_vector_combination(self, unit, _dict: list = None) -> str:
         # {'unit': exp}
-        # TODO: recursively minimize the number of non-zero entries
-        if unit in self._definitely_as_base_units:
+        # TODO: avoid powers like 1/2 ?
+        if isinstance(unit, (Unit, UnitComposition)) and unit in self._definitely_as_base_units:
             return unit.as_base_units
         if _dict is None:
             units, exponents = tuple(self._optise_vector_combination(unit, [[], []]))
@@ -579,6 +579,7 @@ class UnitSystem:
         l = len(self.base_units)
         ul = np.count_nonzero(v)
         gminname, gminval, gminv, gmink = None, ul, v, 0
+        lpminname, lpminval, lpminv, lpmink = None, ul, v, 0
         for name, u in self.as_vectors.items(): # BUG!
             minval, minv, mink = ul, v, 0
             for index in range(l):
@@ -590,10 +591,16 @@ class UnitSystem:
                 if n < minval:
                     minval, minv, mink = n, vt, k
             if minval <= gminval:
-                gminname, gminval, gminv, gmink = name, minval, minv, mink
+                if mink != int(mink):
+                    lpminname, lpminval, lpminv, lpmink = name, minval, minv, mink
+                else:
+                    gminname, gminval, gminv, gmink = name, minval, minv, mink
         if gminname is None:
             raise RuntimeError('This should not happen')
-        # gminv has the least possible amount of non-zero items
+        # gminv has the least possible amount of non-zero items with integer k
+        # if a float exponent provides a strictly better result, use that instead:
+        if lpminval < gminval:
+            gminname, gminval, gminv, gmink = lpminname, lpminval, lpminv, lpmink
         u = self.units[gminname]
         if u in _dict[0]:
             _dict[1][_dict[0].index(u)] += gmink
@@ -810,6 +817,16 @@ class Measurement:
         except Exception:
             pass
         return self
+
+    def cross(self, other):
+        if isinstance(other, Measurement):
+            return Measurement(avoid_np(np.cross(self.value, other.value)),
+                               self.unit * other.unit, self.unit_system)
+        elif isinstance(other, (Unit, UnitComposition)):
+            raise TypeError('Use * to multiply with a unit')
+        else:
+            return Measurement(avoid_np(np.cross(self.value, other)),
+                               self.unit, self.unit_system)
 
 
 #def find_single_combined_unit(the_unit):
