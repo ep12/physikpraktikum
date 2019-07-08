@@ -1,15 +1,21 @@
+import re
 from itertools import chain
 from warnings import warn
 from typing import Union, List, Callable
+
 import numpy as np
 from uncertainties import UFloat
+
 from physikpraktikum.errors import WriteProtectedError
-from physikpraktikum.utils.characters import sup as superscript
+from physikpraktikum.utils.characters import sup as superscript, unsup as undo_superscript
 from physikpraktikum.utils.representations import describe, longstr, str_safe
 
 
 MULTIPLICATION_SEP = ' '
 HUMAN_MULTIPLICATION_SEPS = ' ⋅*'
+RE_UNIT_STRING_SPLIT = r'( +|\*\*|\*|\^|\(|\))'
+
+_ILLEGAL_UNIT_NAME_CHARS = '^*+-,.0123456789'
 
 # TODO: number - unit - products
 
@@ -95,8 +101,16 @@ def get_unit_system(a, b):
     return {'UnitSystem': r}
 
 
+def _check_var_no_numbers(value, name):
+    n = undo_superscript(value)
+    if any(x in n for x in _ILLEGAL_UNIT_NAME_CHARS):
+        raise ValueError('%s cannot contain the following characters: %s' % (name, _ILLEGAL_UNIT_NAME_CHARS))
+
+
 class Unit:
     def __init__(self, quantity: str, name: str, symbol: str, tex: str, **kwargs):
+        _check_var_no_numbers(name, 'Unit name')
+        _check_var_no_numbers(symbol, 'Unit symbol')
         self.__dict__['quantity'], self.__dict__['name'] = quantity, name
         self.__dict__['symbol'], self.__dict__['tex'] = symbol, tex
         self.__dict__['_kwargs'] = kwargs
@@ -434,10 +448,20 @@ class UnitSystem:
     def units(self):
         return {**self.base_units, **self.derived_units}
 
+    @property
+    def all_units(self):
+        return {**self.base_units, **self.derived_units, **{x.name: x for x in self.poor_units}}
+
+    @property
+    def all_unit_symbols(self):
+        return {u.symbol: u for u in self.all_units.values()}
+
     def __call__(self, quantity: str, name: str, symbol: str, tex: str,
                  as_composition: UnitComposition = None,
                  *args, **kwargs):
         if isinstance(as_composition, UnitComposition):
+            _check_var_no_numbers(name, 'Unit name')
+            _check_var_no_numbers(symbol, 'Unit symbol')
             as_composition._kwargs['NamedUnitComposition'] = {'quantity': quantity, 'name': name,
                                                               'symbol': symbol, 'tex': tex}
             ret = as_composition
@@ -519,10 +543,6 @@ class UnitSystem:
         else:
             raise TypeError('Can\'t calculate vector representation for %r' % unit)
 
-    @property
-    def units(self) -> dict:
-        return {**self.base_units, **self.derived_units}
-
     def __str__(self):
         out = '<UnitSystem name=%r>\n' % self.system_name
         for u in self.units.values():
@@ -571,18 +591,117 @@ class UnitSystem:
         return {**{k: v for k, v in zip(self._base_units_names, self._base_units_vectors)},
                 **self._derived_units_vectors}
 
-    #@property
-    #def as_matrix(self):
-    #    return np.array([list(x) for x in self.as_vectors.values()]).T
-
     def find_unit_from_string(self, unitstr: str):
-        if any(x in unitstr for x in HUMAN_MULTIPLICATION_SEPS):
-            parts = [x.strip() for x in unitstr.split(HUMAN_MULTIPLICATION_SEPS) if x.strip()]
-            tmp = 1
-            for p in parts:
-                tmp *= self.find_unit_from_string(p)
-            return tmp
-        pass # TODO
+        # TODO: ()
+        # TODO: long unit names not useable
+        # NOTE: division / not supported!
+        m = re.search(RE_UNIT_STRING_SPLIT, unitstr)
+        if bool(m):
+            parts = [x for x in re.split(RE_UNIT_STRING_SPLIT, unitstr) if x and x != ' ']
+            ret, groupstack = [], [] # [[u, u], [u, u], [u, u, u]]
+            iparts = iter(parts)
+            rest, e = '', None
+
+            def reset_rest():
+                nonlocal rest
+                if rest:
+                    warn(UserWarning('Ignoring %r because I don\'t know what you mean' % rest))
+                    rest = ''
+
+            for p in iparts:
+                unsup = undo_superscript(p)
+                if _ILLEGAL_UNIT_NAME_CHARS in unsup:
+                    # TODO:
+                    unchanged = ''.join(x for x, y in zip(p, unsup) if x == y)
+                    changed = ''.join(y for x, y in zip(p, unsup) if x != y)
+                    try:
+                        e = float(changed)
+                    except Exception as err:
+                        e = None
+                        warn(UserWarning('Couldn\'t convert %r to an exponent. What do you want from me?\n%s'
+                                         % (changed, err)))
+                # TODO: where to check for e?
+                if p == '/':
+                    warn(UserWarning('Division is not supported. Use (...)^-1 instead'))
+                    continue
+                if p in ['**', '^']: # power!
+                    exponent = float(next(iparts))
+                    if groupstack:
+                        groupstack[-1][-1] = groupstack[-1][-1] ** exponent
+                    else:
+                        ret[-1] = ret[-1] ** exponent
+                    reset_rest()
+                    continue
+                if p in HUMAN_MULTIPLICATION_SEPS: # multiplication!
+                    reset_rest()
+                    continue
+                if p == '(': # group
+                    groupstack.append([])
+                    reset_rest()
+                    continue
+                if p == ')': # group end
+                    reset_rest()
+                    if not groupstack:
+                        raise SyntaxError('I didn\'t see that coming: \')\'')
+                    if len(groupstack) == 1:
+                        dest = ret
+                    else:
+                        dest = groupstack[-2]
+                    dest.append(1)
+                    for x in groupstack[-1]:
+                        dest[-1] *= x
+                    groupstack.pop()
+                    continue
+                if p.startswith('\\'):
+                    if len(p) > 4:
+                        p = p[1].upper() + p[2:]
+                    elif len(p) > 1:
+                        p = p[1:]
+                        warn(UserWarning('\\ encountered and the tail %r is short' % p))
+                    else:
+                        warn(UserWarning('Division is not supported. Use (...)^-1 instead'))
+                        continue
+                p = rest + p
+                try:
+                    u = self.find_unit_from_string(p)
+                    if groupstack:
+                        groupstack[-1].append(u)
+                    else:
+                        ret.append(u)
+                except ValueError as e:
+                    warn(UserWarning('Error encountered, trying harder: %s' % e))
+                    rest, e = p, None
+            realret = 1
+            for x in ret:
+                realret *= x
+            return realret
+        # TODO:
+        # long names first
+        for n, u in self.all_units.items():
+            if n == unitstr:
+                return u
+            if u.symbol == unitstr:
+                return u
+        for n, p in self.prefixes.items():
+            if n == unitstr:
+                return p
+            if unitstr.startswith(n):
+                return p * self.find_unit_from_string(unitstr[len(n):])
+            if p.symbol == unitstr:
+                return p
+            if unitstr.startswith(p.symbol):
+                x = unitstr[len(p.symbol):]
+                for k, u in self.all_unit_symbols.items():
+                    if x == k:
+                        return p * u
+        nus = unitstr.casefold()
+        for n, u in self.all_units.items():
+            if n.casefold() == nus:
+                return u
+        for n, p in self.prefixes.items():
+            if n.casefold() == nus:
+                return p
+        raise ValueError('Could not find a unit from %r' % unitstr)
 
     def get_neutral_unit(self):
         if self.base_units:

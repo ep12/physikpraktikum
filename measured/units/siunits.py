@@ -115,7 +115,7 @@ ImperialMile = SI.add_poor_unit('Imperial Mile', 'mi', r'\mile', Meter,
 NauticalMile = SI.add_poor_unit('Nautical Mile', 'nmi', r'\nauticalmile', Meter,
                                 lambda M: 1852 * M, lambda k: k / 1852, is_linear=True)
 Smoot = SI.add_poor_unit('Smoot', 'smoot', r'\smoot', Meter, lambda S: S * 1.702, lambda k: k / 1.702, is_linear=True) # siunitx: ?
-AstronomicalUnit = SI.add_poor_unit('Astronomical unit', 'au', r'\astronomicalunit', Meter,
+AstronomicalUnit = SI.add_poor_unit('Astronomical unit', 'AU', r'\astronomicalunit', Meter,
                                     lambda B: 149597870700 * B, lambda m: m / 149597870700, is_linear=True) # defined: 149597870700 m
 Lightyear = SI.add_poor_unit('Lightyear', 'ly', r'\lightyear', Meter,
                              lambda M: (365.25 * 86400 * 299792358) * M, lambda k: k / (365.25 * 86400 * 299792358), # siunitx: ?
@@ -236,3 +236,8 @@ if __name__ == '__main__':
     print(r'\end{document}')
     print(longstr(Meter))
     print(longstr(Newton), longstr(Newton ** 2 * Meter ** (11)), longstr(Newton ** (17) * Candela ** 2))
+    test = ['Meter', 'Kilogram', 'kg', 'cd', 'T', 'g', 'in', 'milli', 't', 'Nanofarad', 'Sv K⁻¹',
+            'cm', 'smoot', 'AU', 'mT', 'µH', 'J g^-1 K^-1', 'J (g K)^-1', 'J (g (cm kT)^3 K)^-2']
+    for x in test:
+        y = 2 * SI.find_unit_from_string(x)
+        print(x, type(y), y)
