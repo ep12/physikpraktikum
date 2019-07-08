@@ -610,29 +610,33 @@ class UnitSystem:
 
             for p in iparts:
                 unsup = undo_superscript(p)
-                if _ILLEGAL_UNIT_NAME_CHARS in unsup:
-                    # TODO:
-                    unchanged = ''.join(x for x, y in zip(p, unsup) if x == y)
-                    changed = ''.join(y for x, y in zip(p, unsup) if x != y)
+                # TODO:
+                unchanged = ''.join(x for x, y in zip(p, unsup) if x == y)
+                changed = ''.join(y for x, y in zip(p, unsup) if x != y)
+                if changed:
                     try:
                         e = float(changed)
+                        p = unchanged
+                        # everything correct: now use that exponent
                     except Exception as err:
                         e = None
                         warn(UserWarning('Couldn\'t convert %r to an exponent. What do you want from me?\n%s'
                                          % (changed, err)))
                 # TODO: where to check for e?
+                if groupstack:
+                    dest = groupstack[-1]
+                else:
+                    dest = ret
+                #print(repr(p))
                 if p == '/':
                     warn(UserWarning('Division is not supported. Use (...)^-1 instead'))
                     continue
                 if p in ['**', '^']: # power!
                     exponent = float(next(iparts))
-                    if groupstack:
-                        groupstack[-1][-1] = groupstack[-1][-1] ** exponent
-                    else:
-                        ret[-1] = ret[-1] ** exponent
+                    dest[-1] = dest[-1] ** exponent
                     reset_rest()
                     continue
-                if p in HUMAN_MULTIPLICATION_SEPS: # multiplication!
+                if p in HUMAN_MULTIPLICATION_SEPS and p != '': # multiplication!
                     reset_rest()
                     continue
                 if p == '(': # group
@@ -651,6 +655,8 @@ class UnitSystem:
                     for x in groupstack[-1]:
                         dest[-1] *= x
                     groupstack.pop()
+                    if e:
+                        dest[-1] = dest[-1] ** e
                     continue
                 if p.startswith('\\'):
                     if len(p) > 4:
@@ -663,15 +669,16 @@ class UnitSystem:
                         continue
                 p = rest + p
                 try:
-                    u = self.find_unit_from_string(p)
-                    if groupstack:
-                        groupstack[-1].append(u)
-                    else:
-                        ret.append(u)
+                    if p:
+                        u = self.find_unit_from_string(p)
+                        dest.append(u)
+                    if e:
+                        dest[-1] = dest[-1] ** e
                 except ValueError as e:
                     warn(UserWarning('Error encountered, trying harder: %s' % e))
                     rest, e = p, None
             realret = 1
+            # groupstack finalisation
             for x in ret:
                 realret *= x
             return realret

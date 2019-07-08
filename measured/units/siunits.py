@@ -236,8 +236,9 @@ if __name__ == '__main__':
     print(r'\end{document}')
     print(longstr(Meter))
     print(longstr(Newton), longstr(Newton ** 2 * Meter ** (11)), longstr(Newton ** (17) * Candela ** 2))
-    test = ['Meter', 'Kilogram', 'kg', 'cd', 'T', 'g', 'in', 'milli', 't', 'Nanofarad', 'Sv K⁻¹',
+    test = ['Meter', 'Kilogram', 'kg', 'cd', 'T', 'g', 'in', 'milli', 't', 'Nanofarad', 'Sv K⁻¹', '(Sv K)⁻¹',
             'cm', 'smoot', 'AU', 'mT', 'µH', 'J g^-1 K^-1', 'J (g K)^-1', 'J (g (cm kT)^3 K)^-2']
+    #test = ['(Sv K)⁻¹']
     for x in test:
         y = 2 * SI.find_unit_from_string(x)
         print(x, type(y), y)
