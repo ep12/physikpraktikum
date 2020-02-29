@@ -6,22 +6,22 @@ from typing import Union, List, Callable
 import numpy as np
 from uncertainties import UFloat
 
-from physikpraktikum.errors import WriteProtectedError
+from physikpraktikum.errors import WriteProtectedError, FormatError, FormatWarning, TypeWarning
 from physikpraktikum.utils.characters import sup as superscript, unsup as undo_superscript
 from physikpraktikum.utils.representations import describe, longstr, str_safe
+from physikpraktikum.utils.llutils import is_referenced_in_func
 
 
 MULTIPLICATION_SEP = ' '
 HUMAN_MULTIPLICATION_SEPS = ' ⋅*'
-RE_UNIT_STRING_SPLIT = r'( +|\*\*|\*|\^|\(|\))'
+RE_UNIT_STRING_SPLIT = r'( +|\*\*|\*|\^|\(|\)|\\)'
 
 _ILLEGAL_UNIT_NAME_CHARS = '^*+-,.0123456789'
-
-# TODO: number - unit - products
 
 
 class UnitSystemError(ValueError):
     pass
+
 
 class UnitSystemIncompatibilityError(UnitSystemError):
     pass
@@ -43,12 +43,22 @@ class UnitComposition:
     pass
 
 
+class NeutralUnit: # TODO rad, °, $, ...
+    pass
+
+
 class UnitSystem:
     pass
 
 
 class Measurement:
     pass
+
+
+# TODO:
+# def check
+# check unit system compatibility
+# check unit compatibility
 
 
 def avoid_np(obj):
@@ -67,7 +77,7 @@ def _add_dict(a: dict, b: dict):
     return tmp
 
 
-def format_exponent(obj, exponent, method = str, neutral = '1'): # -> utils?
+def format_exponent(obj, exponent, method=str, neutral='1'):  # -> utils?
     if exponent == 0:
         return neutral
     elif exponent == 1:
@@ -97,18 +107,22 @@ def get_unit_system(a, b):
             r = us_1
         else:
             us_1.check_compatible(us_2)
-            r =  us_1
+            r = us_1
     return {'UnitSystem': r}
 
 
 def _check_var_no_numbers(value, name):
     n = undo_superscript(value)
     if any(x in n for x in _ILLEGAL_UNIT_NAME_CHARS):
-        raise ValueError('%s cannot contain the following characters: %s' % (name, _ILLEGAL_UNIT_NAME_CHARS))
+        raise ValueError('%s cannot contain the following characters: %s'
+                         % (name, _ILLEGAL_UNIT_NAME_CHARS))
 
 
 class Unit:
-    def __init__(self, quantity: str, name: str, symbol: str, tex: str, **kwargs):
+    def __init__(self, quantity: str,
+                 name: str,
+                 symbol: str,
+                 tex: str, **kwargs):
         _check_var_no_numbers(name, 'Unit name')
         _check_var_no_numbers(symbol, 'Unit symbol')
         self.__dict__['quantity'], self.__dict__['name'] = quantity, name
@@ -121,7 +135,7 @@ class Unit:
     def __str__(self):
         return self.symbol
 
-    def __str_safe__(self, method = str):
+    def __str_safe__(self, method=str):
         if method == longstr:
             return self.name
         return self.symbol
@@ -135,14 +149,29 @@ class Unit:
     def __describe__(self):
         return '%s (symbol %r, %s)' % (self.name, self.symbol, self.quantity)
 
-    #@property
-    def as_base_units(self, method = str):
+    # @property
+    def as_base_units(self, method=str):
         return method(self)
+
+    def __add__(self, other):  # TODO
+        if isinstance(other, (Unit, UnitComposition)):
+            if self == other:
+                return self
+            raise UnitClashError('Incompatible units: %s and %s'
+                                 % (self, other))
+        if isinstance(other, PoorUnit) and self != other.base_unit:
+            raise UnitClashError('Incompatible units: %s and %s'
+                                 % (self, other))
+        else:
+            return self
+        raise TypeError('Trying to add a unit and %r' % type(other))
 
     def __mul__(self, other):
         if isinstance(other, (Unit, UnitComposition)):
             return UnitComposition(self, other, **get_unit_system(self, 1))
         if isinstance(other, Measurement):
+            if other.value == 1 and other.unit * self == 1:
+                return 1
             return Measurement(other.value, other.unit * self)
         if isinstance(other, np.ndarray):
             return Measurement(other, self)
@@ -155,7 +184,8 @@ class Unit:
 
     def __truediv__(self, other):
         if isinstance(other, (Unit, UnitComposition)):
-            return UnitComposition(self, other ** (-1), **get_unit_system(self, 1))
+            return UnitComposition(self, other ** (-1),
+                                   **get_unit_system(self, 1))
         if isinstance(other, Measurement):
             return Measurement(other.value, self / other.unit)
         return Measurement(1 / other, self)
@@ -164,7 +194,8 @@ class Unit:
         if other == 1:
             return self ** (-1)
         if isinstance(other, (Unit, UnitComposition)):
-            return UnitComposition(self ** (-1), other, **get_unit_system(self, 1))
+            return UnitComposition(self ** (-1), other,
+                                   **get_unit_system(self, 1))
         if isinstance(other, Measurement):
             return Measurement(other.value, other.unit / self)
         return Measurement(other, self ** (-1))
@@ -182,11 +213,23 @@ class Unit:
             return us
         raise AttributeError('This unit has no associated unit system')
 
-    #def __bool__(self, e):
+    @property
+    def base_unit(self):
+        return self
+
+    @property
+    def is_neutral(self):
+        return False
+
+    @property
+    def is_named(self):
+        return True
+
+    # def __bool__(self, e):
     #    return 'neutral_unit' not in self._kwargs
 
-    #@property
-    #def is_neutral(self):
+    # @property
+    # def is_neutral(self):
     #    return 'neutral_unit' in self._kwargs
 
 
@@ -194,26 +237,26 @@ class UnitComposition:
     def __init__(self, *args, **kwargs):
         tmp = {}
         unit_systems = []
-        #symbols = {}
+        # symbols = {}
         for a in args:
-            #print(a, type(a))
+            # print(a, type(a))
             if isinstance(a, (Unit, UnitComposition)):
                 us = a.get_unit_system()
                 if us is not None:
                     unit_systems.append(us)
             if isinstance(a, self.__class__):
-                #if str(a) in symbols:
-                #    symbols[str(a)] += 1
-                #else:
-                #    symbols[str(a)] = 1
+                # if str(a) in symbols:
+                #     symbols[str(a)] += 1
+                # else:
+                #     symbols[str(a)] = 1
                 tmp = _add_dict(tmp, a._dict)
-            elif isinstance(a, dict): # and ...?
+            elif isinstance(a, dict):  # and ...?
                 tmp = _add_dict(tmp, a)
             elif isinstance(a, Unit):
-                #if str(a) in symbols:
-                #    symbols[str(a)] += 1
-                #else:
-                #    symbols[str(a)] = 1
+                # if str(a) in symbols:
+                #     symbols[str(a)] += 1
+                # else:
+                #     symbols[str(a)] = 1
                 if a in tmp:
                     tmp[a] += 1
                 else:
@@ -251,15 +294,18 @@ class UnitComposition:
     def __bool__(self):
         return any(x != 0 for x in self._dict.values())
 
-    #@property
-    def as_base_units(self, method = str):
+    # @property
+    def as_base_units(self, method=str):
         if bool(self):
             # nicely sorted base units (high exponent .. low exponent)
             return MULTIPLICATION_SEP.join(format_exponent(k, v, method)
-                                           for k, v in sorted(self._dict.items(), key=lambda x: x[1], reverse=True) if v != 0)
+                                           for k, v in sorted(self._dict.items(),
+                                                              key=lambda x: x[1],
+                                                              reverse=True)
+                                           if v != 0)
         return ''
 
-    def __str__ (self):
+    def __str__(self):
         if bool(self):
             s = self._kwargs.get('NamedUnitComposition', {}).get('symbol')
             if s:
@@ -275,10 +321,11 @@ class UnitComposition:
             return self.unit_system.str_find_named_derived_unit(self, longstr)
         return ''
 
-    def __str_safe__(self, method = str):
+    def __str_safe__(self, method=str):
         '''recursion-safe variant of str'''
         if bool(self):
-            s = self._kwargs.get('NamedUnitComposition', {}).get(['symbol', 'name'][method == longstr])
+            s = (self._kwargs.get('NamedUnitComposition',
+                                  {}).get(['symbol', 'name'][method == longstr]))
             if s:
                 return s
             return self.as_base_units
@@ -294,8 +341,21 @@ class UnitComposition:
                 return '%s (symbol %r, %s)' % (s['name'], s['symbol'], s['quantity'])
         return '1 (1, Neutral unit)'
 
+    def __add__(self, other):  # TODO
+        if isinstance(other, (Unit, UnitComposition)):
+            if self == other:
+                return self
+            raise UnitClashError('Incompatible units: %s and %s' % (self, other))
+        if isinstance(other, PoorUnit) and self != other.base_unit:
+            raise UnitClashError('Incompatible units: %s and %s' % (self, other))
+        return self
+        # raise TypeError('Trying to add a unit and %r' % type(other))
+
     def __mul__(self, other):
         if self.is_neutral:
+            if self.name:
+                # Degree.base_unit has not attr unit, base_unit -> RecursionError
+                return other  # * self.unit
             return other
         if other == 1:
             return self
@@ -309,7 +369,8 @@ class UnitComposition:
         return self * other
 
     def __pow__(self, e):
-        return UnitComposition(*({k: v * e} for k, v in self._dict.items()), **get_unit_system(self, 1))
+        return UnitComposition(*({k: v * e} for k, v in self._dict.items()),
+                               **get_unit_system(self, 1))
 
     def __truediv__(self, other):
         if isinstance(other, Measurement):
@@ -332,7 +393,11 @@ class UnitComposition:
 
     @property
     def is_neutral(self):
-        return not bool(self)
+        return not bool(self) or len(self._dict) == 0
+
+    @property
+    def is_named(self):
+        return self != 1 or bool(self.name)
 
     @property
     def is_writeable(self):
@@ -363,11 +428,15 @@ class UnitComposition:
         raise AttributeError('This unit has no associated unit system')
 
     @property
+    def base_unit(self):
+        return self
+
+    @property
     def tex(self):
         return self._kwargs.get('NamedUnitComposition', {}).get('tex', '')
 
 
-class PoorUnit: # TODO
+class PoorUnit:  # TODO
     '''A class to represent stupid established units (miles, hours, degree, celsius, fahrenheit)'''
     def __init__(self, name: str, symbol: str, tex: str,
                  related_base_unit: Unit,
@@ -395,12 +464,25 @@ class PoorUnit: # TODO
         return 1 / self.to_base(1 / value) / self.base_unit
 
     def __pow__(self, e):
+        if e == 1:
+            return self
         if not self.is_linear:
             raise TypeError('%r is not linear!' % self.name)
         return Measurement(self.to_base(1) ** e, self.base_unit ** e)
 
     def __str__(self):
-        return 'PoorUnit:\t %s (symbol %r, base %s)' % (self.name, self.symbol, self.base_unit)
+        return 'PoorUnit: %s (symbol %r, base %s)' % (self.name, self.symbol, self.base_unit) # no \t
+
+    def __eq__(self, other):  # important!
+        return self.base_unit == other
+
+    @property
+    def is_neutral(self):  # important!
+        return self.base_unit.is_neutral
+
+    @property
+    def is_named(self):
+        return True
 
 
 class UnitPrefix:
@@ -427,6 +509,11 @@ class UnitPrefix:
 
     def __rmul__(self, other):
         return avoid_np(np.multiply(self.factor, other))
+
+    def __pow__(self, e):
+        return self.factor ** e
+
+    # do not define __truediv__ because that is rarely used. In edge cases (Measurement str below) use * . **(-1)
 
 
 class UnitSystem:
@@ -466,8 +553,8 @@ class UnitSystem:
                                                               'symbol': symbol, 'tex': tex}
             ret = as_composition
             self.derived_units[name] = ret
-            d = ret._dict # TODO: BUG
-            #for k in d.keys():
+            d = ret._dict  # TODO: BUG
+            # for k in d.keys():
             #    if k not in self.base_units:
             #        print(k)
             #        self._add_base_unit(k)
@@ -530,7 +617,7 @@ class UnitSystem:
 
     def _calculate_vector_representation(self, unit):
         if isinstance(unit, Unit):
-            if not unit in self.base_units.values():
+            if unit not in self.base_units.values():
                 raise UnitSystemError('Unit %r is not part of the unit system %r'
                                       % (unit, self.system_name))
             return self._base_units_vectors[self._get_base_unit_index_by_unit(unit)]
@@ -565,19 +652,24 @@ class UnitSystem:
     def str_vector_representation(self):
         out = '<UnitSystem vectors=true name=%r>\n' % self.system_name
         for k, v in self.base_units.items():
-            out += '\tBaseUnit\t: %s\t: %s (symbol %r)\n' % (self._base_units_vectors[self._base_units_names.index(k)],
-                                                             v.name, v.symbol)
+            out += ('\tBaseUnit\t: %s\t: %s (symbol %r)\n'
+                    % (self._base_units_vectors[self._base_units_names.index(k)],
+                       v.name, v.symbol))
         for k, v in self._derived_units_vectors.items():
             u = self.derived_units[k]
             name, symbol = u.name, u.symbol
             if name and symbol:
-                out += '\tUnitComposition\t: %s\t: %s (symbol %r)\n' % (v, name, symbol)
+                out += ('\tUnitComposition\t: %s\t: %s (symbol %r)\n'
+                        % (v, name, symbol))
             elif name:
-                out += '\tUnitComposition\t: %s\t: %s (no symbol)\n' % (v, name)
+                out += ('\tUnitComposition\t: %s\t: %s (no symbol)\n'
+                        % (v, name))
             elif symbol:
-                out += '\tUnitComposition\t: %s\t: symbol %r (no long name)\n' % (v, symbol)
+                out += ('\tUnitComposition\t: %s\t: symbol %r (no long name)\n'
+                        % (v, symbol))
             else:
-                out += '\tUnitComposition\t: %s\t: (no long name or symbol)\n' % v
+                out += ('\tUnitComposition\t: %s\t: (no long name or symbol)\n'
+                        % v)
         for v in self.prefixes.values():
             out += '\tUnitPrefix\t: %r\n' % v
         out += '</UnitSystem>'
@@ -592,25 +684,25 @@ class UnitSystem:
                 **self._derived_units_vectors}
 
     def find_unit_from_string(self, unitstr: str):
-        # TODO: ()
-        # TODO: long unit names not useable
+        # TODO BUG: long unit names not useable!
         # NOTE: division / not supported!
         m = re.search(RE_UNIT_STRING_SPLIT, unitstr)
         if bool(m):
             parts = [x for x in re.split(RE_UNIT_STRING_SPLIT, unitstr) if x and x != ' ']
-            ret, groupstack = [], [] # [[u, u], [u, u], [u, u, u]]
+            ret, groupstack = [], []  # [[u, u], [u, u], [u, u, u]]
             iparts = iter(parts)
             rest, e = '', None
 
             def reset_rest():
                 nonlocal rest
                 if rest:
-                    warn(UserWarning('Ignoring %r because I don\'t know what you mean' % rest))
+                    warn('Ignoring %r because I don\'t '
+                         'know what you mean' % rest,
+                         FormatWarning)
                     rest = ''
 
             for p in iparts:
                 unsup = undo_superscript(p)
-                # TODO:
                 unchanged = ''.join(x for x, y in zip(p, unsup) if x == y)
                 changed = ''.join(y for x, y in zip(p, unsup) if x != y)
                 if changed:
@@ -620,18 +712,20 @@ class UnitSystem:
                         # everything correct: now use that exponent
                     except Exception as err:
                         e = None
-                        warn(UserWarning('Couldn\'t convert %r to an exponent. What do you want from me?\n%s'
-                                         % (changed, err)))
+                        warn('Couldn\'t convert %r to an exponent.'
+                             ' What do you want from me?\n%s'
+                             % (changed, err), FormatWarning)
                 # TODO: where to check for e?
                 if groupstack:
                     dest = groupstack[-1]
                 else:
                     dest = ret
-                #print(repr(p))
+                # print(repr(p))
                 if p == '/':
-                    warn(UserWarning('Division is not supported. Use (...)^-1 instead'))
+                    warn('Division is not supported. Use (...)^-1 instead',
+                         FormatWarning)
                     continue
-                if p in ['**', '^']: # power!
+                if p in ['**', '^']:  # power!
                     exponent = float(next(iparts))
                     dest[-1] = dest[-1] ** exponent
                     reset_rest()
@@ -639,14 +733,14 @@ class UnitSystem:
                 if p in HUMAN_MULTIPLICATION_SEPS and p != '': # multiplication!
                     reset_rest()
                     continue
-                if p == '(': # group
+                if p == '(':  # group
                     groupstack.append([])
                     reset_rest()
                     continue
-                if p == ')': # group end
+                if p == ')':  # group end
                     reset_rest()
                     if not groupstack:
-                        raise SyntaxError('I didn\'t see that coming: \')\'')
+                        raise FormatError('I didn\'t see that coming: \')\'')
                     if len(groupstack) == 1:
                         dest = ret
                     else:
@@ -658,15 +752,13 @@ class UnitSystem:
                     if e:
                         dest[-1] = dest[-1] ** e
                     continue
-                if p.startswith('\\'):
-                    if len(p) > 4:
-                        p = p[1].upper() + p[2:]
-                    elif len(p) > 1:
-                        p = p[1:]
-                        warn(UserWarning('\\ encountered and the tail %r is short' % p))
-                    else:
-                        warn(UserWarning('Division is not supported. Use (...)^-1 instead'))
-                        continue
+                if p == '\\':  # latex or division
+                    warn(FormatWarning('I ignore that you threw a backslash at me.\n'
+                                       'If you meant a division: I don\'t support it that way, use '
+                                       '(...)^-1 instead.\nIf you think I am LaTeX: No, I am not! '
+                                       'You will probably encounter a ton of errors if you throw '
+                                       'siunitx stuff at me! Don\'t you dare!'))
+                    continue
                 p = rest + p
                 try:
                     if p:
@@ -675,7 +767,8 @@ class UnitSystem:
                     if e:
                         dest[-1] = dest[-1] ** e
                 except ValueError as e:
-                    warn(UserWarning('Error encountered, trying harder: %s' % e))
+                    warn(FormatWarning('Error encountered, trying harder: %s'
+                                       % e))
                     rest, e = p, None
             realret = 1
             # groupstack finalisation
@@ -684,30 +777,57 @@ class UnitSystem:
             return realret
         # TODO:
         # long names first
+        if unitstr.startswith('\\'):
+            if len(unitstr) > 1:
+                unitstr = unitstr[1:]
+            else:
+                warn('Division \\ is not supported. Use (...)^-1 instead',
+                     FormatWarning)
+                return 1
+        if '\\' in unitstr:
+            i = unitstr.index('\\')
+            if i == len(unitstr) - 1:
+                raise FormatError('What the heck should %r mean?' % unitstr)
+            return self.find_unit_from_string(unitstr[:i]) * self.find_unit_from_string(unitstr[i:])
+        unsup = undo_superscript(unitstr)
+        unchanged = ''.join(x for x, y in zip(unitstr, unsup) if x == y)
+        changed = ''.join(y for x, y in zip(unitstr, unsup) if x != y)
+        e = 1
+        if changed:
+            try:
+                e = float(changed)
+                unitstr = unchanged
+            except Exception:
+                raise FormatError('%r? Explaaain! Explaaain!' % unitstr)
         for n, u in self.all_units.items():
             if n == unitstr:
-                return u
+                return u ** e
             if u.symbol == unitstr:
-                return u
+                return u ** e
         for n, p in self.prefixes.items():
             if n == unitstr:
-                return p
-            if unitstr.startswith(n):
-                return p * self.find_unit_from_string(unitstr[len(n):])
+                return p ** e
+            if unitstr.startswith(n):  # TODO: worx?
+                return (p * self.find_unit_from_string(unitstr[len(n):])) ** e
             if p.symbol == unitstr:
-                return p
+                return p ** e
             if unitstr.startswith(p.symbol):
                 x = unitstr[len(p.symbol):]
                 for k, u in self.all_unit_symbols.items():
-                    if x == k:
-                        return p * u
+                    if x == k:  # TODO: worx?
+                        return (p * u) ** e
+        for u in self.poor_units:
+            if u.name == unitstr:  # case-sensitive!
+                return u ** e
+            if u.symbol == unitstr:
+                return u ** e
         nus = unitstr.casefold()
         for n, u in self.all_units.items():
             if n.casefold() == nus:
-                return u
+                return u ** e
         for n, p in self.prefixes.items():
             if n.casefold() == nus:
-                return p
+                return p ** e
         raise ValueError('Could not find a unit from %r' % unitstr)
 
     def get_neutral_unit(self):
@@ -716,7 +836,7 @@ class UnitSystem:
             return u / u
         raise ValueError('Unit system %r has no units yet' % self.system_name)
 
-    def _optise_vector_combination(self, unit, _dict: list = None, method = str) -> str:
+    def _optise_vector_combination(self, unit, _dict: list = None, method=str) -> str:
         if isinstance(unit, (Unit, UnitComposition)) and unit in self._definitely_as_base_units:
             # TODO: long unit names
             return unit.as_base_units(method)
@@ -726,15 +846,20 @@ class UnitSystem:
             if isinstance(r, str):
                 return r
             units, exponents = tuple(r)
-            units = [x for _, x in sorted(zip(exponents, units), reverse=True, key=lambda t: t[0])]
+            units = [x for _, x in sorted(zip(exponents, units),
+                                          reverse=True,
+                                          key=lambda t: t[0])]
             exponents = sorted(exponents, reverse=True)
-            return MULTIPLICATION_SEP.join(format_exponent(str_safe(u, method), e, method = method)
-                                           for u, e in zip(units, exponents) if e != 0)
+            return MULTIPLICATION_SEP.join(format_exponent(str_safe(u, method),
+                                                           e, method=method)
+                                           for u, e in zip(units, exponents)
+                                           if e != 0)
         if isinstance(unit, Unit):
             for v in self.base_units.values():
                 if unit == v:
                     return [[v], [1]]
-            raise ValueError('Unit %s is not part of unit system %r' % (unit, self.system_name))
+            raise ValueError('Unit %s is not part of unit system %r'
+                             % (unit, self.system_name))
         if isinstance(unit, UnitComposition):
             #if len(unit._dict) == 1:
             #    return self._optise_vector_combination(list(unit._dict.keys())[0])
@@ -745,7 +870,9 @@ class UnitSystem:
             raise TypeError('Unsupported type %r' % type(unit))
         l = len(self.base_units)
         ul = np.count_nonzero(v)
-        if isinstance(unit, UnitComposition) and self.limit_combined_units and ul > self.limit_combined_units:
+        if (isinstance(unit, UnitComposition)
+                and self.limit_combined_units
+                and ul > self.limit_combined_units):
             return unit.as_base_units(method)
         gminname, gminval, gminv, gmink = None, ul, v, 0
         lpminname, lpminval, lpminv, lpmink = None, ul, v, 0
@@ -776,12 +903,12 @@ class UnitSystem:
         else:
             _dict[0].append(u)
             _dict[1].append(gmink)
-        if gminval:
-            return self._optise_vector_combination(gminv, _dict) # method=method
+        if gminval:  # method=method
+            return self._optise_vector_combination(gminv, _dict)
         else:
             return _dict
 
-    def str_find_named_derived_unit(self, unit, method = str):
+    def str_find_named_derived_unit(self, unit, method=str):
         for v in chain(self.base_units.values(), self.derived_units.values()):
             if v == unit:
                 return str_safe(v, method)
@@ -811,7 +938,9 @@ class UnitSystem:
 
 
 class Measurement:
-    def __init__(self, numerical_value, unit: Union[Unit, UnitComposition] = 1, unit_system: UnitSystem = None):
+    def __init__(self, numerical_value,
+                 unit: Union[Unit, UnitComposition] = 1,
+                 unit_system: UnitSystem = None):
         if hasattr(unit, 'unit_system') and isinstance(unit.unit_system, UnitSystem):
             fallback_unit_system = unit.unit_system
         else:
@@ -849,7 +978,12 @@ class Measurement:
         raise WriteProtectedError('Do not manipulate data!')
 
     def __str__(self):
+        if isinstance(self.value, UFloat):
+            # TODO: use prefixes
+            return '(%s) %s' % (self.value, self.unit)
         return '%s %s' % (self.value, self.unit)
+
+    __repr__ = __str__  # ugly
 
     @property
     def nominal_value(self):
@@ -859,6 +993,8 @@ class Measurement:
         else:
             return v
 
+    n = nominal_value
+
     @property
     def std_dev(self):
         v = self.value
@@ -867,11 +1003,17 @@ class Measurement:
         else:
             return 0
 
+    s = std_dev
+
     def is_consistent_with(self, other):
         if isinstance(other, (UFloat, self.__class__)):
-            return abs(other.nominal_value - self.nominal_value) <= min(self.std_dev, other.std_dev)
+            return (abs(other.nominal_value - self.nominal_value)
+                    <= min(self.std_dev, other.std_dev))
         else:
             return abs(other - self.nominal_value) <= self.std_dev
+
+    def __float__(self):
+        return self.nominal_value
 
     def __eq__(self, other):
         if isinstance(other, Measurement):
@@ -884,15 +1026,27 @@ class Measurement:
     def __mul__(self, other):
         if isinstance(other, Measurement):
             self.unit.unit_system.check_compatible(other.unit_system)
-            if self.unit * other.unit == 1:
-                return avoid_np(np.multiply(self.value, other.value)) # avoid np return types
-            return Measurement(np.multiply(self.value, other.value), self.unit * other.unit, self.unit_system)
+            if self.unit * other.unit == 1:  # avoid np return types
+                return avoid_np(np.multiply(self.value, other.value))
+            return Measurement(np.multiply(self.value, other.value),
+                               self.unit * other.unit, self.unit_system)
         elif isinstance(other, (Unit, UnitComposition)):
             if self.unit * other == 1:
                 return self.value
             return Measurement(self.value, self.unit * other, self.unit_system)
+        elif is_referenced_in_func((other, '__mul__'), Measurement):
+            return other * self
+        elif is_referenced_in_func((other, '__rmul__'), Measurement):
+            return NotImplemented
+        elif isinstance(other, (int, float, UFloat)):
+            return Measurement(np.multiply(self.value, other),
+                               self.unit, self.unit_system)
         else:
-            return Measurement(np.multiply(self.value, other), self.unit, self.unit_system)
+            # TODO
+            warn(TypeWarning('I do not know how to multiply with a %r'
+                             % type(other)))
+            return Measurement(np.multiply(self.value, other),
+                               self.unit, self.unit_system)
 
     def __rmul__(self, other):
         return self * other
@@ -901,55 +1055,70 @@ class Measurement:
         # always use numpy ufuncs for mul, div, too?
         if isinstance(other, Measurement):
             self.unit.unit_system.check_compatible(other)
-            if self.unit * other.unit == 1:
-                return avoid_np(np.matmul(self.value, other.value)) # avoid np return types
-            return Measurement(np.matmul(self.value, other.value), self.unit * other.unit, self.unit_system)
+            if self.unit * other.unit == 1:  # avoid np return types
+                return avoid_np(np.matmul(self.value, other.value))
+            return Measurement(np.matmul(self.value, other.value),
+                               self.unit * other.unit, self.unit_system)
+        elif is_referenced_in_func((other, '__rmatmul__'), Measurement):
+            return other.__rmatmul__(self)
         else:
-            return Measurement(np.matmul(self.value, other), self.unit, self.unit_system)
+            return Measurement(np.matmul(self.value, other),
+                               self.unit, self.unit_system)
 
     def __rmatmul__(self, other):
         if isinstance(other, Measurement):
             self.unit.unit_system.check_compatible(other)
-            if self.unit * other.unit == 1:
-                return avoid_np(np.matmul(other.value, self.value)) # avoid np return types
-            return Measurement(np.matmul(other.value, self.value), self.unit * other.unit, self.unit_system)
+            if self.unit * other.unit == 1:  # avoid np return types
+                return avoid_np(np.matmul(other.value, self.value))
+            return Measurement(np.matmul(other.value, self.value),
+                               self.unit * other.unit, self.unit_system)
+        # elif is_referenced_in_func((other, '__matmul__'), Measurement)
+        # would never happen
         else:
-            return Measurement(np.matmul(other, self.value), self.unit, self.unit_system)
+            return Measurement(np.matmul(other, self.value),
+                               self.unit, self.unit_system)
 
     def __truediv__(self, other):
         if isinstance(other, Measurement):
             self.unit.unit_system.check_compatible(other.unit_system)
             if other == 0:
                 raise ZeroDivisionError(self, other)
-            if self.unit * other.unit == 1:
-                return avoid_np(np.true_divide(self.value, other.value)) # avoid np return types
-            return Measurement(np.true_divide(self.value, other.value), self.unit / other.unit, self.unit_system)
-        elif isinstance(other, (UFloat, self.__class__)):
+            if self.unit * other.unit == 1:  # avoid np return types
+                return avoid_np(np.true_divide(self.value, other.value))
+            return Measurement(np.true_divide(self.value, other.value),
+                               self.unit / other.unit, self.unit_system)
+        elif isinstance(other, UFloat):
             if other.nominal_value == 0:
                 raise ZeroDivisionError(self, other)
-            return Measurement(np.true_divide(self.value, other.value), self.unit / other.unit, self.unit_system)
+            return Measurement(np.true_divide(self.value, other),
+                               self.unit, self.unit_system)
         elif isinstance(other, (Unit, UnitComposition)):
             if self.unit / other == 1:
                 return avoid_np(self.value) # avoid np return types
             return Measurement(self.value, self.unit / other, self.unit_system)
+        elif is_referenced_in_func((other, '__rtruediv__'), Measurement):
+            return other.__rtruediv__(self)
         else:
             if other == 0:
                 raise ZeroDivisionError(self, other)
-            return Measurement(np.true_divide(self.value, other), self.unit, self.unit_system)
+            return Measurement(np.true_divide(self.value, other),
+                               self.unit, self.unit_system)
 
     def __pow__(self, e):
         if self == 0:
             if e == -1:
-                raise ZeroDivisionError(other, self)
+                raise ZeroDivisionError(e, self)
             elif e == 0:
                 return np.NaN
             else:
                 return 1 * self.unit ** e
         if e == 0:
             return 1
-        return Measurement(np.power(self.value, e), self.unit ** e, self.unit_system)
+        return Measurement(np.power(self.value, e),
+                           self.unit ** e, self.unit_system)
 
     def __rtruediv__(self, other):
+        # TODO: is_referenced_in_func?
         return self ** (-1) * other
 
     def __add__(self, other):
@@ -957,19 +1126,32 @@ class Measurement:
             self.unit.unit_system.check_compatible(other.unit_system)
             if other.unit != self.unit:
                 raise UnitClashError('Unit mismatch: %s and %s' % (self, other))
-            if self.unit == 1:
-                return avoid_np(np.add(self.value, other.value)) # avoid np return types
-            return Measurement(np.add(self.value, other.value), self.unit, self.unit_system)
+            if self.unit == 1:  # avoid np return types
+                return avoid_np(np.add(self.value, other.value))
+            return Measurement(np.add(self.value, other.value),
+                               self.unit, self.unit_system)
+        elif is_referenced_in_func((other, '__add__'), Measurement):
+            return other + self
+        elif is_referenced_in_func((other, '__radd__'), Measurement):
+            return NotImplemented
+        elif isinstance(other, (UFloat, int, float)):
+            return Measurement(np.add(self.value, other),
+                               self.unit, self.unit_system)
         else:
-            if self.unit == 1 or self.unit.is_neutral:
-                return avoid_np(np.add(other, self.value)) # avoid np return types
+            if self.unit == 1 or self.unit.is_neutral:  # avoid np return types
+                return avoid_np(np.add(other, self.value))
+            raise TypeError('I am not sure what to do (addition of a Measurement and %r)'
+                            % type(other))
 
-    def __neg__(self, other):
-        return Measurement(np.negative(self.value), self.unit, self.unit_system)
+    def __neg__(self):
+        return Measurement(np.negative(self.value),
+                           self.unit, self.unit_system)
 
     def __sub__(self, other):
         if isinstance(other, Measurement):
             return self + (-other)
+        elif is_referenced_in_func((other, '__rsub__'), Measurement):
+            return NotImplemented
         else:
             return self + np.negative(other)
 
@@ -988,6 +1170,13 @@ class Measurement:
         if hasattr(self.value, '__setitem__'):
             return self.value.__setitem__(*args)
         raise TypeError('Item assignment not supported')
+
+    def __lt__(self, other):
+        if isinstance(other, Measurement):
+            if self.unit == other.unit:
+                return self.value < other.value
+            raise UnitClashError('Incompatible units: %r and %r' % (self.unit, other.unit))
+        raise NotImplemented
 
     @property
     def norm(self):
@@ -1008,7 +1197,7 @@ class Measurement:
                                self.unit, self.unit_system)
 
 
-#def find_single_combined_unit(the_unit):
+# def find_single_combined_unit(the_unit):
 #    for known_unit in all_well_known_units:
 #        if known_unit == the_unit:
 #            return known_unit

@@ -11,9 +11,31 @@ SUPSCRIPT = {
 }
 
 
+def _get_key_by_value(d, value, nf = None):
+    if value not in d.values():
+        return nf
+    for k, v in d.items():
+        if v == value:
+            return k
+
+
 def sup(a: str):
     return ''.join(SUPSCRIPT.get(x, x) for x in a)
 
 
 def sub(a: str):
     return ''.join(SUBSCRIPT.get(x, x) for x in a)
+
+
+def unsup(a: str):
+    return ''.join(_get_key_by_value(SUPSCRIPT, x, x) for x in a)
+
+
+def unsub(a: str):
+    return ''.join(_get_key_by_value(SUBSCRIPT, x, x) for x in a)
+
+
+if __name__ == '__main__':
+    test = [sup('-10'), 'K' + sup('-10'), ')' + sup('-3')]
+    for x in test:
+        print(x, unsup(x))

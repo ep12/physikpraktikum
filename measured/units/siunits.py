@@ -1,4 +1,8 @@
+import re
+
 import numpy as np
+from uncertainties import ufloat, UFloat
+
 from physikpraktikum.measured.units.unit import Unit, UnitComposition, UnitPrefix, UnitSystem
 from physikpraktikum.utils.representations import longstr, describe
 
@@ -147,6 +151,79 @@ Electronvolt = SI.add_poor_unit('Electronvolt', 'eV', r'\electronvolt', Joule,
 Neper = SI.add_poor_unit('Neper', 'Np', r'\neper', 1, lambda x: np.exp(x), lambda x: np.log(x))
 
 
+Bar = SI.add_poor_unit('Bar', 'bar', r'\bar', Pascal, lambda x: 1e5 * x, lambda x: 1e-5 * x, is_linear=True)
+at = TechnicalAtmosphere = SI.add_poor_unit('Technical Atmosphere', 'at', None, Pascal,
+                                            lambda x: 98066.5 * x, lambda x: x / 98066.5, is_linear=True)
+atm = StandarAtmosphere = SI.add_poor_unit('Standard Athmosphere', 'atm', None, Pascal,
+                                           lambda x: 101325 * x, lambda x: x / 101325, is_linear=True)
+mmHg = Torr = SI.add_poor_unit('Torr', 'Torr', None, Pascal,
+                               lambda x: 101325 / 760 * x, lambda x: x * 760 / 101325, is_linear=True)
+
+
+def angle_str_parser(angle_str):
+    for x in ['+-', '+/-', '±', '∓']:
+        if x in angle_str:
+            return ufloat(*map(angle_str_parser, angle_str.split(x)))
+    fl_re = r'[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?'
+    angle_re = (r'''\s*(?P<deg>{0})\s*°(\s+(?P<min>{0})\s*'(\s+'''
+                r'''(?P<sec>{0})\s*("|''))?)?\s*''').format(fl_re)
+    m = re.fullmatch(angle_re, angle_str, re.IGNORECASE)
+    if not bool(m):
+        raise ValueError('Invalid angle format: {!r}'.format(angle_str))
+    d = m.groupdict()
+    degree = d['deg']
+    minute = d['min']
+    second = d['sec']
+    if second:
+        val = sum([int(degree), int(minute) / 60, float(second) / 3600])
+    elif minute:
+        val= sum([int(degree), float(minute) / 60])
+    else:
+        val = float(degree)
+    return val * np.pi / 180
+
+
+def angle_str_formatter_tex(x, seconds: bool = False):
+    if isinstance(x, UFloat):
+        return f'$\\left({angle_str_formatter_tex(x.n, seconds)[1:-1]}\\pm {angle_str_formatter_tex(x.s, seconds)[1:-1]}\\right)$'
+    in_degrees = x * 180 / np.pi
+    full_deg, rest_deg = int(in_degrees) - (in_degrees < 0), 60 * (in_degrees % 1)
+    full_min = int(rest_deg)
+    s = f"${full_deg}^\\circ+{full_min}'"
+    if seconds:
+        full_sec = int(60 * (rest_deg - full_min))
+        s += f"{full_sec}''"
+    else:
+        s += '$'
+    return s
+
+
+def angle_str_formatter_ang(x, seconds: bool = False):
+    if isinstance(x, UFloat):
+        return f'${angle_str_formatter_ang(x.n, seconds)[1:-1]}\\pm {angle_str_formatter_ang(x.s, seconds)[1:-1]}$'
+    in_degrees = x * 180 / np.pi
+    full_deg, rest_deg = int(in_degrees) - (in_degrees < 0), 60 * (in_degrees % 1)
+    full_min = int(rest_deg)
+    d, m, s = full_deg, full_min, ''
+    if seconds:
+        full_sec = int(60 * (rest_deg - full_min))
+        s = full_sec
+    return '$\\ang{' + ';'.join(map(str, (d, m, s))) + '}$'
+
+
+def angle_str_formatter_pretty(x, seconds: bool = False):
+    if isinstance(x, UFloat):
+        return f'{angle_str_formatter_pretty(x.n, seconds)}±{angle_str_formatter_pretty(x.s, seconds)}'
+    in_degrees = x * 180 / np.pi
+    full_deg, rest_deg = int(in_degrees) - (in_degrees < 0), 60 * (in_degrees % 1)
+    full_min = int(rest_deg)
+    s = f"{full_deg}°+{full_min}'"
+    if seconds:
+        full_sec = int(60 * (rest_deg - full_min))
+        s += f"{full_sec}''"
+    return s
+
+
 if __name__ == '__main__':
     from pprint import pprint
     print(SI)
@@ -237,8 +314,11 @@ if __name__ == '__main__':
     print(longstr(Meter))
     print(longstr(Newton), longstr(Newton ** 2 * Meter ** (11)), longstr(Newton ** (17) * Candela ** 2))
     test = ['Meter', 'Kilogram', 'kg', 'cd', 'T', 'g', 'in', 'milli', 't', 'Nanofarad', 'Sv K⁻¹', '(Sv K)⁻¹',
-            'cm', 'smoot', 'AU', 'mT', 'µH', 'J g^-1 K^-1', 'J (g K)^-1', 'J (g (cm kT)^3 K)^-2']
+            'cm', 'smoot', 'AU', 'mT', 'µH', 'J g^-1 K^-1', 'J (g K)^-1', 'J (g (cm kT)^3 K)^-2',
+            r'\Meter', r'\centi\meter', r'\milli\tesla', r'\kilo\gram\meter\second^-2',
+            'Newton Meter⁹', 'Joule²', ' Newton¹⁷ Candela²']
     #test = ['(Sv K)⁻¹']
     for x in test:
         y = 2 * SI.find_unit_from_string(x)
         print(x, type(y), y)
+    print(Kilogram * Meter / Second ** 2)

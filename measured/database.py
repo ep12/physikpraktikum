@@ -1,8 +1,9 @@
 from os.path import isfile, isdir, curdir, realpath, join, commonpath
 from glob import glob, iglob, has_magic
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Union
 
 from physikpraktikum.measured.fileio import DBFile
+from physikpraktikum.measured.measurement_series import MeasurementSeries
 
 
 DEFAULT_SETTINGS = {
@@ -92,7 +93,7 @@ class Database:
         '''Returns the number of cached MeasurementSeries'''
         return len(self._fcache)
 
-    def __getitem__(self, index: str):
+    def __getitem__(self, index: str) -> Union[DBFile, MeasurementSeries]:
         opts, (fpath, col) = _parse_opath(index, self.root)
         self._ensure_cached(fpath, **opts)
         return self._fcache[fpath][col]
@@ -100,7 +101,7 @@ class Database:
     def __setitem__(self, index: str, value):
         opts, (fpath, col) = _parse_opath(index, self.root)
         self._ensure_cached(fpath, **opts)
-        print(fpath)
+        #print(fpath)
         #return self._fcache[fpath][col] = value
 
     def to_cache(self, path, *args, **kwargs):

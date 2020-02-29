@@ -1,5 +1,6 @@
 '''PhysikPraktikum tools'''
 
+import sys
 import os
 from itertools import combinations, permutations, zip_longest as zip_longest
 from typing import Union, Any, Hashable, Tuple, List, List, Dict, Type, Set
@@ -11,6 +12,10 @@ import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib
 from matplotlib import pyplot as plt
+
+from uncertainties import ufloat, UFloat
+
+from physikpraktikum.measured.measurement_series import MeasurementSeries
 
 
 SCATTERPLOT_OPTIONS = {
@@ -27,7 +32,10 @@ ERRORBAR_OPTIONS = {
     'elinewidth': 1.5,
     'alpha': 0.5,
 }
-COLORS = ['black', 'blue', 'red', 'green', 'magenta', 'cyan', 'orange']
+COLORS = ['black', 'blue', 'red', 'green', 'magenta', 'orange', 'grey', 'cyan',
+          'darkred', 'olive', 'turquoise', 'darkslategrey', 'teal', 'navy',
+          'darkorchid', 'royalblue', 'crimson', 'purple', 'deepskyblue', 'lime',
+          'sienna', 'goldenrod']
 LINESTYLES = ['-', '--', ':', '-.']
 SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classic']
     'axes.grid': True,
@@ -38,7 +46,7 @@ SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classi
     'figure.titlesize': 18,
     'figure.subplot.left': 0.075,
     'figure.subplot.right': 0.925,
-    'figure.subplot.top': 0.925,
+    'figure.subplot.top': 0.9,
     'figure.subplot.bottom': 0.1,
     'figure.subplot.hspace': 0.2,
     'figure.subplot.wspace': 0.2,
@@ -52,6 +60,16 @@ SCISTYLE = matplotlib.RcParams(**{ # see matplotlib.pyplot.style.library['classi
     #'savefig.format': 'svg',
     'savefig.pad_inches': 0.025,
     'text.usetex': True,
+    # 'text.latex.unicode': True,  # deprecated
+    # 'pgf.texsystem': 'xelatex',
+    'text.latex.preamble': [r'\usepackage{siunitx}',
+                            # r'\usepackage{latexsym}',
+                            # r'\usepackage{stmaryrd}',  # symbols
+                            r'\usepackage{amsmath}',
+                            # r'\usepackage{amssymb}',
+                            # r'\usepackage{amsfonts}',
+                            r'\usepackage{gensymb}',
+                            r'\usepackage{upgreek}'],
     'xtick.major.size': 4,  # default 3.5
     'xtick.minor.size': 3,  # default 2
     'xtick.major.top': False,
@@ -131,6 +149,23 @@ def interval_select(data: Dict[str, List],
     return out
 
 
+def minmax(obj, stretch: Union[Tuple[float, float], float] = None) -> Tuple[float, float]:
+    if stretch is None:
+        stretch = 1.1
+    if isinstance(obj, MeasurementSeries):
+        mean, err, _ = obj.decompose_to_tuple()
+        min_val = np.min(np.subtract(mean, err))
+        max_val = np.max(np.add(mean, err))
+    elif isinstance(obj, (list, tuple, np.ndarray)):
+        min_val, max_val = np.min(obj), np.max(obj)
+    else:
+        raise TypeError('MinMax: unknown type %r' % type(obj))
+    center = (min_val + max_val) / 2
+    diff = (max_val - min_val) / 2
+    lsc, rsc = stretch if isinstance(stretch, tuple) else (stretch, stretch)
+    return center - lsc * diff, center + rsc * diff
+
+
 def strip_NaN(data: List) -> List:
     non_NaN_found = False
     out = []
@@ -176,7 +211,7 @@ def _list_or_val_to_array(obj: Union[List, np.ndarray, Any],
         raise ValueError('%r has %d elements but %d are required' % (obj, len(obj), length))
     elif isinstance(obj, list):
         if len(obj) == length:
-            return np.ndarray(obj, dtype=dtype)
+            return np.array(obj, dtype=dtype)
         raise ValueError('%r has %d elements but %d are required' % (obj, len(obj), length))
     else:
         return np.full(length, obj)
@@ -288,9 +323,56 @@ def multi_single_column_to_tex_table(data: Dict[str, List[Union[int, float]]],
         f.write('\\end{supertabular}\n')
 
 
+def dict_to_tex_table(data: Dict[str, List[Union[int, float, Any]]],
+                      path: str,
+                      vborders: bool = None,
+                      columns: list = None,
+                      rename_columns: dict = None,
+                      index_name: str = None,
+                      fmt: Union[str, List] = '{}',
+                      NA: str = 'NA',
+                      decimalsep: str = ',') -> Void:
+    if columns is None:
+        cols = list(data.keys())
+    else:
+        cols = [x for x in columns if x in data]
+    print(index_name, index_name is not None)
+    coldata =  [[1 + x for x in range(max(len(data[c]) for c in cols))]] * (index_name is not None) + [data[x] for x in cols]
+    print(len(coldata), len(cols))
+    if isinstance(rename_columns, dict):
+        cols = [rename_columns.get(k, k) for k in cols]
+    names = [index_name] * (index_name is not None) + cols
+    if vborders is None:
+        vborders = len(names) > 2
+    vc = '|' * vborders
+    with open(path + '.tex' * (not path.endswith('.tex')), 'w') as f:
+        f.write('\\tablehead{\\hline %s \\\\\\hline\\hline}\n' % \
+                ' & '.join(str(k).replace('&', '\\&') for k in names))
+        f.write('\\begin{supertabular}{%s%s%s}\n' % (vc, vc.join('c' for k in names), vc))
+        for i, ntup in enumerate(zip_longest(*tuple(coldata))):
+            s = []
+            for c, v in enumerate(ntup):
+                cf = fmt if isinstance(fmt, str) else fmt[c]
+                if v is None:
+                    s.append(NA)
+                else:
+                    s.append(cf.format(v).replace('&', r'\&'))
+                    if decimalsep != '.':
+                        s[-1] = s[-1].replace('.', decimalsep)
+            f.write('%s \\tabularnewline\\hline\n' % ' & '.join(s))
+        f.write('\\end{supertabular}\n')
+
+
 def rel_to_abs_err(data, relerr):
     assert len(data) == len(relerr)
     return np.array([data[i] * relerr[i] for i in range(len(data))], dtype=float)
+
+
+def manual_R_squared(y_input, y_model):
+    residuals = y_input - y_model
+    ss_res = np.sum(residuals ** 2)
+    ss_tot = np.sum((y_input - np.mean(y_input)) ** 2)
+    return 1 - (ss_res / ss_tot)
 
 
 def R_squared_from_fit(x: Union[List, np.ndarray],
@@ -362,9 +444,9 @@ def fit_and_plot(data: dict,
                  title: str,
                  xlabel: str,
                  ylabel: str,
-                 xlim: Tuple[float, float],
-                 ylim: Tuple[float, float],
-                 colors: list=None,
+                 xlim: Tuple[float, float] = None,
+                 ylim: Tuple[float, float] = None,
+                 colors: list = None,
                  figsize: Tuple[float, float] = (9, 5.5),
                  axes: plt.Axes = None,
                  center_axes: Dict[str, Union[bool, str]] = None,
@@ -429,49 +511,81 @@ def fit_and_plot(data: dict,
         fstyles = sorted(fstyles, key=lambda d: d['linestyle']) # python now preserves the order of dicts, let's prefer colors
 
     for k, v in data.items():
-        i += 1
-        color = colors[i]
+        if 'color' in v:
+            color = v['color']
+        elif 'color' not in v.get('scatterplot_options', {}):
+            i += 1
+            color = colors[i % len(colors)]
+        else:
+            color=None
         y = v['y']
         x = v.get('x')
         if x is None:
             x = np.array(range(len(y)))
 
+        if xlim is None:
+            xlim = minmax(x, v.get('xlim_stretch'))
+        if ylim is None:
+            ylim = minmax(y, v.get('ylim_stretch'))
+
+        xerr, yerr = None, None
+        if isinstance(x, MeasurementSeries):
+            x, xerr, *_ = x.decompose_to_tuple()
+        if v.get('xerr') is not None and len(v['xerr']) == len(x):
+            xerr = v['xerr']
+        if isinstance(y, MeasurementSeries):
+            y, yerr, *_ = y.decompose_to_tuple()
+        if v.get('yerr') is not None and len(v['yerr']) == len(y):
+            yerr = v['yerr']
+
         # scatterplot
         scpo = v.get('scatterplot_options', {})
-        ascpo = {**SCATTERPLOT_OPTIONS, **scpo}
-        ax.plot(x, y, label=v.get('label', k), color=color, **ascpo)
+        ascpo = {**SCATTERPLOT_OPTIONS, 'color': color, **scpo}
+        ax.plot(x, y, label=v.get('label', k), **ascpo)
 
         # errorbars
-        if any([v.get('xerr') is not None, v.get('yerr') is not None]):
-            ebo = v.get('errorbar_options', {})
-            aebo = {**ERRORBAR_OPTIONS, **ebo}
-            xerr, yerr = None, None
-            if v.get('xerr') is not None:
-                xerr = _list_or_val_to_array(v['xerr'], len(y), float)
-            if v.get('yerr') is not None:
-                yerr = _list_or_val_to_array(v['yerr'], len(y), float)
-            ax.errorbar(x, y, xerr=xerr, yerr=yerr, color=color, **aebo)
+        ebo = v.get('errorbar_options', {})
+        aebo = {**ERRORBAR_OPTIONS, 'color': color, **ebo}
+        if xerr is not None:
+            xerr = _list_or_val_to_array(xerr, len(y), float)
+        if yerr is not None:
+            yerr = _list_or_val_to_array(yerr, len(y), float)
+        ax.errorbar(x, y, xerr=xerr, yerr=yerr, **aebo)
 
         # fit
         if xlim:
-            contx = np.linspace(*xlim, 100)
+            if 0 not in xlim and np.log10(xlim[1] / xlim[0]) > 1:
+                contx = np.logspace(*map(np.log10, xlim), 100)
+            else:
+                contx = np.linspace(*xlim, 1000)
         if v.get('fit'):
             fits = v.get('fit')
             if not isinstance(fits, list):
                 fits = list(fits)
             for fit_index, fit in enumerate(fits):
                 if not fit.get('manual', False):
+                    bounds = fit['bounds']
+                    if len(bounds) != 2:
+                        bounds = np.transpose(bounds)
                     par, R_sq, uncertainty, covar_mat = fit_func(x, y,
                                                                  fit['f'], fit['par'],
                                                                  v.get('yerr'),
                                                                  v.get('is_abs_err'),
-                                                                 fit['bounds'],
+                                                                 bounds,
                                                                  *fit.get('args', ()),
                                                                  **fit.get('kwargs', {}))
                 else:
-                    par = fit['par']
+                    par = tuple(tmpval.n if isinstance(tmpval, UFloat) else tmpval
+                                for tmpval in fit['par'])
+                    if all(isinstance(tmpval, UFloat) for tmpval in fit['par']):
+                        par_ufloat = fit['par']
+                    elif isinstance(fit.get('par_ufloat'), (list, tuple)):
+                        par_ufloat = fit['par_ufloat']
+                    else:
+                        par_ufloat = [ufloat(x, 0) if not isinstance(x, UFloat) else x
+                                      for x in par]
                     R_sq = R_squared_from_fit(x, y, fit['f'], par)
-                    uncertainty = np.inf
+                    uncertainty = float('nan')
                     covar_mat = np.full((len(par), len(par)), np.inf)
                 if isinstance(par, Exception):
                     fit['error'] = par
@@ -480,39 +594,58 @@ def fit_and_plot(data: dict,
                     fstyle = {'color': color, 'linestyle': LINESTYLES[fit_index % len(LINESTYLES)]}
                 else:
                     fstyle = fstyles[(fit_index) % len(fstyles)]
+                if not isinstance(uncertainty, float):
+                    par_ufloat = tuple(map(lambda t: ufloat(*t), zip(par, uncertainty)))
+                elif not all(isinstance(obj, UFloat) for obj in par_ufloat):
+                    par_ufloat = [ufloat(par, np.inf) for x in par]
                 fit['par'] = par
                 fit['covariance_matrix'] = covar_mat
                 fit['R^2'] = R_sq
                 fit['par_uncertainty'] = uncertainty
+                fit['par_ufloat'] = par_ufloat
                 fpo = v.get('fitplot_options', {})
-                afpo = {**FITPLOT_OPTIONS, **gpo, **fpo}
+                spfo = fit.get('fitplot_options', {})
+                afpo = {**FITPLOT_OPTIONS, **gpo, **fpo, **spfo}
                 flfmt = fit.get('label', get_doc(fit['f'], ''))
-                fle = flfmt.format(p=par, par=par,
-                                   R=R_sq, R_squared=R_sq,
-                                   u=uncertainty, uncertainty=uncertainty,
-                                   M=MODE_TEXT[int(fit.get('manual', False)) % 2])
+                info_dict = {
+                    'p': par, 'par': par,
+                    'P': par_ufloat, 'par_ufloat': par_ufloat,
+                    'R': R_sq, 'R_squared': R_sq,
+                    'u': uncertainty, 'uncertainty': uncertainty,
+                    'M': MODE_TEXT[int(fit.get('manual', False)) % 2],
+                    'pi': np.pi,
+                    'np': np
+                }
+                if sys.version_info[0] < 3 or sys.version_info[1] < 6:
+                    ## Old: format stuff
+                    fle = flfmt.format(**info_dict)
+                else:
+                    ## New: fstrings
+                    fle = eval('f%r' % flfmt, info_dict, info_dict)
                 ax.plot(
                     fit.get('contx', contx), fit['f'](fit.get('contx', contx), *par),
-                    label=fle, **fstyle, **afpo)
-    plt.legend()
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
+                    label=fle, **{**fstyle, **afpo})
+    ax.legend()
+    ax.set_xlabel(xlabel, zorder=50)  # zorder ignored
+    ax.set_ylabel(ylabel, zorder=50)  # zorder ignored
+    ax.set_title(title, zorder=50)
     for k, v in center_axes.items():
-        if v == True:
-            ax.spines[k].set_position('zero')
-        if v == 'auto':
+        spine_attrs = set(v.lower().split(' ')) if isinstance(v, str) else {v}
+        if 'auto' in spine_attrs:
             i = sorted([ylim, xlim][k in ['left', 'right']]) # pyplot accepts intervals like (0, -1)
-            if not isinstance(i, tuple):  # probably None
-                continue
-            if i[0] <= 0 <= i[1]:
-                # The 0 line is in the displayed interval, make it thick!
-                ax.spines[k].set(position='zero', linewidth=1.5, linestyle='-')
+            if isinstance(i, list) and i[0] <= 0 <= i[1]:
+                spine_attrs |= {'zero', 'thick', 'solid'}
             else:
-                # The 0 line is not in the displayed interval, dash it!
-                ax.spines[k].set(alpha=0.5, linewidth=1, linestyle=(0,(7, 8)))
+                spine_attrs |= {'dash'}
+        ax.spines[k].set(
+            linewidth=1.5 if 'thick' in spine_attrs else 1,
+            linestyle='-' if 'dash' not in spine_attrs else (0, (3, 5)),
+            alpha=0.5 if 'dash' in spine_attrs else (0 if 'off' in spine_attrs else 1),
+        )
+        if 'zero' in spine_attrs:
+            ax.spines[k].set(position='zero')
     if xlim:
-        plt.xlim(*xlim)
+        ax.set_xlim(*xlim)
     if ylim:
-        plt.ylim(*ylim)
+        ax.set_ylim(*ylim)
     return fig, ax
